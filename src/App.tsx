@@ -81,10 +81,41 @@ export default function App() {
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
   const [showSqlSetupModal, setShowSqlSetupModal] = useState<boolean>(false);
 
+  // --- NAVIGATION HISTORY STACK ---
+  const [sectionHistory, setSectionHistory] = useState<('dashboard' | 'clients' | 'calendar' | 'analytics')[]>([]);
   
   const [currentSection, setCurrentSection] = useState<'dashboard' | 'clients' | 'calendar' | 'analytics'>('dashboard');
   const [isClientFormOpen, setIsClientFormOpen] = useState(false);
   const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+
+  const navigateToSection = (newSection: 'dashboard' | 'clients' | 'calendar' | 'analytics') => {
+    if (currentSection !== newSection) {
+      setSectionHistory(prev => {
+        const nextHist = [...prev, currentSection];
+        // Keep a max of 15 items in history
+        if (nextHist.length > 15) {
+          return nextHist.slice(nextHist.length - 15);
+        }
+        return nextHist;
+      });
+      setCurrentSection(newSection);
+    }
+  };
+
+  const handleBack = () => {
+    if (isClientFormOpen || clientToEdit) {
+      setIsClientFormOpen(false);
+      setClientToEdit(null);
+      return;
+    }
+    if (sectionHistory.length > 0) {
+      const prev = sectionHistory[sectionHistory.length - 1];
+      setSectionHistory(prevHistory => prevHistory.slice(0, -1));
+      setCurrentSection(prev);
+    } else {
+      setCurrentSection('dashboard');
+    }
+  };
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [activeClientsTab, setActiveClientsTab] = useState('todos');
 
@@ -583,14 +614,24 @@ export default function App() {
              
             {/* Real Mockup Header Actions */}
             <div className="flex items-center justify-between mt-1">
-              {/* Left circular glass button */}
-              <button 
-                onClick={() => setShowMenuDrawer(true)}
-                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.12] text-white transition cursor-pointer"
-                title="Menu"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-menu"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
-              </button>
+              {/* Left circular glass button - Menu or Back Arrow depending on context */}
+              {currentSection !== 'dashboard' || isClientFormOpen || clientToEdit ? (
+                <button 
+                  onClick={handleBack}
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.12] text-white transition cursor-pointer animate-fade-in"
+                  title="Voltar"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left"><line x1="19" x2="5" y1="12" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                </button>
+              ) : (
+                <button 
+                  onClick={() => setShowMenuDrawer(true)}
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.12] text-white transition cursor-pointer animate-fade-in"
+                  title="Menu"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-menu"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+                </button>
+              )}
  
               {/* Logo brand using imported Oswald title headings to match Page 1 */}
               <div className="text-center select-none">
@@ -1476,7 +1517,7 @@ export default function App() {
                   
                   <button
                     onClick={() => {
-                      setCurrentSection('dashboard');
+                      navigateToSection('dashboard');
                       setShowMenuDrawer(false);
                     }}
                     className={`w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer ${currentSection === 'dashboard' ? 'bg-zinc-805 bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'}`}
@@ -1487,7 +1528,7 @@ export default function App() {
 
                   <button
                     onClick={() => {
-                      setCurrentSection('clients');
+                      navigateToSection('clients');
                       setShowMenuDrawer(false);
                     }}
                     className={`w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer ${currentSection === 'clients' ? 'bg-zinc-805 bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'}`}
@@ -1498,7 +1539,7 @@ export default function App() {
 
                   <button
                     onClick={() => {
-                      setCurrentSection('calendar');
+                      navigateToSection('calendar');
                       setShowMenuDrawer(false);
                     }}
                     className={`w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer ${currentSection === 'calendar' ? 'bg-zinc-805 bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'}`}
@@ -1509,7 +1550,7 @@ export default function App() {
 
                   <button
                     onClick={() => {
-                      setCurrentSection('analytics');
+                      navigateToSection('analytics');
                       setShowMenuDrawer(false);
                     }}
                     className={`w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer ${currentSection === 'analytics' ? 'bg-zinc-805 bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'}`}
@@ -1789,8 +1830,6 @@ export default function App() {
             </div>
           </div>
         )}
-
-        {/* BOTTOM FLOATING TABS BAR DECK (Exactly styled as pictured) */}
         <nav 
           className="absolute bottom-0 inset-x-0 bg-black border-t border-zinc-900 py-2 flex items-center justify-between z-40 px-5 rounded-none sm:rounded-b-[40px] font-sans h-16 hover:border-zinc-800 transition" 
           id="mobile-tab-deck"
@@ -1799,7 +1838,7 @@ export default function App() {
           {/* TAB 1: Home dashboard */}
           <button
             onClick={() => {
-              setCurrentSection('dashboard');
+              navigateToSection('dashboard');
               setClientToEdit(null);
               setIsClientFormOpen(false);
             }}
@@ -1817,7 +1856,7 @@ export default function App() {
           {/* TAB 2: Clients list */}
           <button
             onClick={() => {
-              setCurrentSection('clients');
+              navigateToSection('clients');
               setClientToEdit(null);
               setIsClientFormOpen(false);
             }}
@@ -1835,8 +1874,8 @@ export default function App() {
           {/* TAB 3: Overlap Center float + custom plus registration button */}
           <div className="flex-1 flex items-center justify-center relative h-full" id="tabbar-plus-button-container">
             <button
-              onClick={() => {
-                setCurrentSection('clients');
+               onClick={() => {
+                navigateToSection('clients');
                 setClientToEdit(null);
                 setIsClientFormOpen(true);
                 showToast('Iniciando registro de trabalho...', 'info');
@@ -1852,7 +1891,7 @@ export default function App() {
           {/* TAB 4: Calendar view */}
           <button
             onClick={() => {
-              setCurrentSection('calendar');
+              navigateToSection('calendar');
               setClientToEdit(null);
               setIsClientFormOpen(false);
             }}
@@ -1870,7 +1909,7 @@ export default function App() {
           {/* TAB 5: Analytics & Growth view */}
           <button
             onClick={() => {
-              setCurrentSection('analytics');
+              navigateToSection('analytics');
               setClientToEdit(null);
               setIsClientFormOpen(false);
             }}
@@ -1878,7 +1917,7 @@ export default function App() {
             type="button"
           >
             <span className={`transition ${currentSection === 'analytics' ? 'scale-105 text-white font-bold' : 'text-zinc-500 opacity-60'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-bar-chart-2"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-bar-chart-2"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
             </span>
             <span className={`text-[8px] font-black uppercase tracking-wider ${currentSection === 'analytics' ? 'text-white' : 'text-zinc-500'}`}>
               Métricas

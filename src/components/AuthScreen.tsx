@@ -294,6 +294,22 @@ export function AuthScreen({ onAuthSuccess, onBypassOffline, showToast }: AuthSc
               <Chrome className="w-4 h-4 text-zinc-400" />
               <span>Entrar com o Google</span>
             </button>
+
+            {/* Offline Local Bypass Option */}
+            <div className="flex items-center gap-2 py-1 text-zinc-700">
+              <div className="h-px bg-zinc-900 flex-1"></div>
+              <span className="text-[9px] uppercase tracking-wider font-extrabold select-none">Sem login?</span>
+              <div className="h-px bg-zinc-900 flex-1"></div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onBypassOffline}
+              disabled={isLoading}
+              className="w-full py-3 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-300 hover:text-[#C084FC] font-black text-[10px] rounded-2xl border border-indigo-500/20 cursor-pointer transition uppercase tracking-wider flex items-center justify-center gap-2"
+            >
+              <span>Acessar Modo Demonstrativo Offline</span>
+            </button>
           </>
         )}
 
