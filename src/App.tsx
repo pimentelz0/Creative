@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Client, Appointment, Note, PaymentStatus, ProjectProgress, UserProfile } from './types';
 import { 
   INITIAL_CLIENTS, 
@@ -104,6 +105,37 @@ export default function App() {
   const [bypassOffline, setBypassOffline] = useState<boolean>(() => {
     return localStorage.getItem('creative_bypass_offline') === 'true';
   });
+
+  // --- INITIAL SPLASH SCREEN & ONBOARDING STATES ---
+  const [playingSplash, setPlayingSplash] = useState<boolean>(true);
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+  const [onboardingStep, setOnboardingStep] = useState<'terms' | 'tut1' | 'tut2' | 'tut3' | 'tut4'>('terms');
+  const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
+
+  // 1. Splash screen play timer
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPlayingSplash(false);
+    }, 2200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 2. Onboarding check when user or session changes
+  useEffect(() => {
+    if (sessionUser || bypassOffline) {
+      const userId = sessionUser?.id || 'offline';
+      const key = `creative_onboarded_v2_${userId}`;
+      const alreadyOnboarded = localStorage.getItem(key) === 'true';
+      if (!alreadyOnboarded) {
+        setShowOnboarding(true);
+        setOnboardingStep('terms');
+      } else {
+        setShowOnboarding(false);
+      }
+    } else {
+      setShowOnboarding(false);
+    }
+  }, [sessionUser, bypassOffline]);
 
   // --- PERSISTENCE & AUTH SYNC EFFECTS ---
   
@@ -438,6 +470,51 @@ export default function App() {
       showToast('Filtrando Clientes de Gestão de Mídia / Redes. 🔗', 'info');
     }
   };
+
+  if (playingSplash) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-[#0A0A0C] text-white flex flex-col items-center justify-center font-sans overflow-hidden">
+        {/* Ambient atmospheric backdrop light glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] bg-[#A78BFA]/15 rounded-full blur-[100px] pointer-events-none animate-pulse" />
+        
+        <div className="relative text-center space-y-4 max-w-xs px-6 animate-fade-in">
+          <motion.h1 
+            initial={{ letterSpacing: "0.2em", opacity: 0 }}
+            animate={{ letterSpacing: "0.35em", opacity: 1 }}
+            transition={{ duration: 1.2, delay: 0.2, ease: "easeOut" }}
+            className="text-4xl font-serif font-black uppercase text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]"
+          >
+            CREATIVE
+          </motion.h1>
+          
+          <motion.div 
+            initial={{ width: 0 }}
+            animate={{ width: 48 }}
+            transition={{ duration: 0.6, delay: 0.8 }}
+            className="h-[2px] bg-white/40 mx-auto rounded-full mt-2" 
+          />
+          
+          <motion.p 
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 0.9, y: 0 }}
+            transition={{ duration: 0.8, delay: 1.0 }}
+            className="text-[9px] uppercase font-sans font-black tracking-[0.25em] text-[#A78BFA]/90"
+          >
+            Produtividade Premium
+          </motion.p>
+          
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.5 }}
+            transition={{ duration: 0.8, delay: 1.2 }}
+            className="text-[7px] text-zinc-500 font-sans tracking-widest uppercase"
+          >
+            Criatividade Automatizada
+          </motion.p>
+        </div>
+      </div>
+    );
+  }
 
   if (authLoading) {
     return (
@@ -973,6 +1050,160 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* POPUP: ONBOARDING (TERMS & TUTORIAL) */}
+        {showOnboarding && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in font-sans">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="relative w-full max-w-sm bg-[#121215] rounded-[32px] p-6 border border-zinc-800 shadow-2xl space-y-5 max-h-[92vh] flex flex-col justify-between overflow-y-auto"
+            >
+              {/* Header Branding */}
+              <div className="flex items-center gap-3 border-b border-zinc-850 pb-4 select-none">
+                <span className="w-10 h-10 rounded-2xl bg-white text-black flex items-center justify-center font-bold text-lg shadow-md">✦</span>
+                <div className="text-left">
+                  <h3 className="text-lg font-serif font-bold tracking-[0.1em] text-white">CREATIVE</h3>
+                  <p className="text-[8px] tracking-wider text-[#A78BFA] font-sans font-black uppercase">Onboarding de Boas-Vindas</p>
+                </div>
+              </div>
+
+              {onboardingStep === 'terms' && (
+                <div className="flex-1 flex flex-col justify-between space-y-4 text-left">
+                  <div className="space-y-2">
+                    <span className="text-2xl block">📜</span>
+                    <h4 className="text-sm font-black text-white font-sans uppercase tracking-wider">Contrato de Adesão & Termos de Uso</h4>
+                    <p className="text-[10px] text-zinc-400 leading-relaxed font-sans">
+                      Seja bem-vindo ao Creative Studio, a central de produtividade definitiva de criadores de conteúdo! Para garantir a segurança dos seus dados e clientes, solicitamos sua concordância com os princípios do estúdio:
+                    </p>
+                    <div className="p-3 bg-zinc-950 rounded-2xl border border-zinc-850 space-y-2.5 text-[9px] text-zinc-400 font-sans max-h-44 overflow-y-auto leading-relaxed divide-y divide-zinc-900">
+                      <p className="pb-1.5 font-medium"><strong className="text-white">1. Propriedade dos Dados:</strong> Seus registros de contratos, faturamentos, custos e anotações confidenciais pertencem única e exclusivamente a você.</p>
+                      <p className="py-1.5 font-medium"><strong className="text-white">2. Organização e Sigilo:</strong> Você concorda em fazer uso ético das informações arquivadas de seus clientes e parceiros de negócios.</p>
+                      <p className="pt-1.5 font-medium"><strong className="text-white">3. Sincronização Segura:</strong> Seus dados são salvos localmente no navegador e sincronizados automaticamente na nuvem do Supabase quando houver conexão.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="flex items-start gap-3 p-3 bg-zinc-950/60 rounded-2xl border border-zinc-850 hover:bg-zinc-900/40 transition cursor-pointer select-none">
+                      <input 
+                        type="checkbox"
+                        checked={acceptedTerms}
+                        onChange={(e) => setAcceptedTerms(e.target.checked)}
+                        className="mt-0.5 rounded border-zinc-800 text-[#A78BFA] focus:ring-[#A78BFA] bg-zinc-900 w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-[10px] text-zinc-300 font-semibold leading-relaxed">
+                        Eu li, compreendo e aceito voluntariamente todos os Termos de Uso e Políticas supramencionadas.
+                      </span>
+                    </label>
+
+                    <button
+                      onClick={() => setOnboardingStep('tut1')}
+                      disabled={!acceptedTerms}
+                      className={`w-full py-3 font-extrabold text-xs rounded-2xl cursor-pointer shadow-md uppercase tracking-widest transition active:scale-95 text-center flex items-center justify-center gap-2 ${acceptedTerms ? 'bg-white text-black hover:bg-zinc-100' : 'bg-zinc-850 text-zinc-550 border-none opacity-40 cursor-not-allowed'}`}
+                    >
+                      Avançar para Tutorial ⚡
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {onboardingStep === 'tut1' && (
+                <div className="flex-1 flex flex-col justify-between space-y-4 text-left">
+                  <div className="space-y-3">
+                    <div className="w-full h-32 rounded-2xl bg-zinc-950 border border-zinc-850 flex items-center justify-center text-5xl">
+                      📁
+                    </div>
+                    <span className="text-[8px] bg-[#A78BFA]/15 text-[#A78BFA] font-black px-2.5 py-1 rounded-full uppercase tracking-wider block w-max">Módulo 1 de 4</span>
+                    <h4 className="text-sm font-black text-white font-sans uppercase tracking-wider">Gestão de Contratos de Clientes</h4>
+                    <p className="text-[10px] text-zinc-400 leading-relaxed font-sans">
+                      Organize suas diárias, orçamentos e prazos em um painel unificado. Controle com precisão o <span className="text-emerald-400 font-semibold">valor total do contrato</span>, a <span className="text-amber-400 font-semibold">quantia já recebida</span> e a etapa atual de produção com um clique.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setOnboardingStep('tut2')}
+                    className="w-full py-3 bg-white hover:bg-zinc-100 text-black font-extrabold text-xs rounded-2xl cursor-pointer shadow-md uppercase tracking-widest transition active:scale-95 text-center flex items-center justify-center gap-1.5"
+                  >
+                    Próximo Passo ➜
+                  </button>
+                </div>
+              )}
+
+              {onboardingStep === 'tut2' && (
+                <div className="flex-1 flex flex-col justify-between space-y-4 text-left">
+                  <div className="space-y-3">
+                    <div className="w-full h-32 rounded-2xl bg-zinc-950 border border-zinc-850 flex items-center justify-center text-5xl">
+                      📅
+                    </div>
+                    <span className="text-[8px] bg-[#A78BFA]/15 text-[#A78BFA] font-black px-2.5 py-1 rounded-full uppercase tracking-wider block w-max">Módulo 2 de 4</span>
+                    <h4 className="text-sm font-black text-white font-sans uppercase tracking-wider">Agenda e Gravações</h4>
+                    <p className="text-[10px] text-zinc-400 leading-relaxed font-sans">
+                      Nunca mais perca um agendamento ou sofra com sobreposição de datas. O calendário interativo exibe todas as pendências e diárias marcadas de forma cronológica por cores exclusivas de status.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setOnboardingStep('tut3')}
+                    className="w-full py-3 bg-white hover:bg-zinc-100 text-black font-extrabold text-xs rounded-2xl cursor-pointer shadow-md uppercase tracking-widest transition active:scale-95 text-center flex items-center justify-center gap-1.5"
+                  >
+                    Próximo Passo ➜
+                  </button>
+                </div>
+              )}
+
+              {onboardingStep === 'tut3' && (
+                <div className="flex-1 flex flex-col justify-between space-y-4 text-left">
+                  <div className="space-y-3">
+                    <div className="w-full h-32 rounded-2xl bg-zinc-950 border border-zinc-850 flex items-center justify-center text-5xl">
+                      📈
+                    </div>
+                    <span className="text-[8px] bg-[#A78BFA]/15 text-[#A78BFA] font-black px-2.5 py-1 rounded-full uppercase tracking-wider block w-max">Módulo 3 de 4</span>
+                    <h4 className="text-sm font-black text-white font-sans uppercase tracking-wider">Métricas de Faturamento</h4>
+                    <p className="text-[10px] text-zinc-400 leading-relaxed font-sans">
+                      Acompanhe o crescimento financeiro do seu estúdio. Gráficos em tempo real calculam o faturamento mensal total, ticket médio contratado, saldo pendente a receber e margens operacionais de forma automática.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setOnboardingStep('tut4')}
+                    className="w-full py-3 bg-white hover:bg-zinc-100 text-black font-extrabold text-xs rounded-2xl cursor-pointer shadow-md uppercase tracking-widest transition active:scale-95 text-center flex items-center justify-center gap-1.5"
+                  >
+                    Próximo Passo ➜
+                  </button>
+                </div>
+              )}
+
+              {onboardingStep === 'tut4' && (
+                <div className="flex-1 flex flex-col justify-between space-y-4 text-left">
+                  <div className="space-y-3">
+                    <div className="w-full h-32 rounded-2xl bg-zinc-950 border border-zinc-850 flex items-center justify-center text-5xl">
+                      📝
+                    </div>
+                    <span className="text-[8px] bg-[#A78BFA]/15 text-[#A78BFA] font-black px-2.5 py-1 rounded-full uppercase tracking-wider block w-max">Módulo 4 de 4</span>
+                    <h4 className="text-sm font-black text-white font-sans uppercase tracking-wider">Bloco de Rascunho Integrado</h4>
+                    <p className="text-[10px] text-zinc-400 leading-relaxed font-sans font-sans">
+                      O bloco de rascunhos em tempo real é ideal para registrar roteiros de Reels, pré-sets artísticos, ideias de transições de vídeo e insights que surgem durante os ensaios no estúdio.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const userId = sessionUser?.id || 'offline';
+                      const key = `creative_onboarded_v2_${userId}`;
+                      localStorage.setItem(key, 'true');
+                      setShowOnboarding(false);
+                      showToast('Bem-vindo à nova era do seu estúdio! Boas gravações! 🎬✨', 'success');
+                    }}
+                    className="w-full py-3 bg-gradient-to-r from-[#A78BFA] to-purple-600 text-white font-extrabold text-xs rounded-2xl cursor-pointer shadow-lg uppercase tracking-widest transition active:scale-95 hover:brightness-110 text-center flex items-center justify-center gap-1.5"
+                  >
+                    Iniciar no Creative ✨
+                  </button>
+                </div>
+              )}
+            </motion.div>
           </div>
         )}
 

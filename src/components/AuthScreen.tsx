@@ -131,10 +131,7 @@ export function AuthScreen({ onAuthSuccess, onBypassOffline, showToast }: AuthSc
         
         {/* Header Branding */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-zinc-905 border border-zinc-800/60 shadow-inner mb-2 text-white">
-            <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
-          </div>
-          <h1 className="text-3xl font-serif font-bold tracking-[0.25em] uppercase text-white">
+          <h1 className="text-3xl font-serif font-bold tracking-[0.25em] uppercase text-white pt-4">
             CREATIVE
           </h1>
           <p className="text-[10px] uppercase font-sans font-black tracking-widest text-[#A78BFA] opacity-80">
