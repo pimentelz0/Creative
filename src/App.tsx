@@ -532,7 +532,7 @@ export default function App() {
         {toastMessage && (
           <div className="fixed bottom-6 right-6 z-50 animate-fade-in" id="global-system-toast">
             <div className="px-5 py-3 rounded-xl bg-zinc-900/90 text-white border border-zinc-800 shadow-2xl text-xs font-bold flex items-center gap-3 backdrop-blur-md">
-              <span className="text-white text-sm">✦</span>
+              <span className="text-[#A78BFA] text-xs">●</span>
               <p>{toastMessage.text}</p>
             </div>
           </div>
@@ -563,7 +563,7 @@ export default function App() {
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 animate-fade-in" id="global-system-toast">
           <div className="px-5 py-3 rounded-xl bg-zinc-900/90 text-white border border-zinc-800 shadow-2xl text-xs font-bold flex items-center gap-3 backdrop-blur-md">
-            <span className="text-white text-sm">✦</span>
+            <span className="text-[#A78BFA] text-xs">●</span>
             <p>{toastMessage.text}</p>
           </div>
         </div>
@@ -1064,7 +1064,7 @@ export default function App() {
             >
               {/* Header Branding */}
               <div className="flex items-center gap-3 border-b border-zinc-850 pb-4 select-none">
-                <span className="w-10 h-10 rounded-2xl bg-white text-black flex items-center justify-center font-bold text-lg shadow-md">✦</span>
+                <span className="w-10 h-10 rounded-2xl bg-white text-black flex items-center justify-center font-bold text-lg shadow-md">🎬</span>
                 <div className="text-left">
                   <h3 className="text-lg font-serif font-bold tracking-[0.1em] text-white">CREATIVE</h3>
                   <p className="text-[8px] tracking-wider text-[#A78BFA] font-sans font-black uppercase">Onboarding de Boas-Vindas</p>
@@ -1435,7 +1435,7 @@ export default function App() {
               <div className="space-y-6">
                 {/* Brand Header */}
                 <div className="select-none flex items-center gap-2 border-b border-zinc-800 pb-4 mt-2">
-                  <span className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-sm">✦</span>
+                  <span className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-sm">🎬</span>
                   <div>
                     <h2 className="text-xl font-serif font-bold tracking-[0.1em] text-white">CREATIVE</h2>
                     <p className="text-[8px] tracking-wider text-zinc-500 font-sans font-bold uppercase">Produtividade Automática</p>
@@ -1612,7 +1612,7 @@ export default function App() {
                     }}
                     className="w-full py-3 bg-white hover:bg-zinc-100 text-black font-extrabold text-xs rounded-xl cursor-pointer shadow-md uppercase tracking-wider flex items-center justify-center gap-2"
                   >
-                    <span>✦</span> Nova Nota
+                    <span>✍️</span> Nova Nota
                   </button>
 
                   {notes.length === 0 ? (
