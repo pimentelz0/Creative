@@ -51,45 +51,60 @@ export function AuthScreen({ onAuthSuccess, onBypassOffline, showToast }: AuthSc
     try {
       if (isSignUp) {
         // Sign Up with Supabase Auth
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: name || email.split('@')[0],
+        try {
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                full_name: name || email.split('@')[0],
+              }
             }
-          }
-        });
+          });
 
-        if (error) throw error;
-
-        // Note: Sometimes email confirmation is required depending on Supabase settings.
-        // We will insert an initial profile if we have a user ID.
-        if (data.user) {
-          try {
-            // Upsert a default profile row for this user
-            const { error: profileError } = await supabase.from('user_profile').upsert({
-              id: data.user.id,
-              name: name || email.split('@')[0],
-              avatar_url: '',
-              avatar_emoji: '👩‍🎨',
-              avatar_color: 'from-purple-500 to-indigo-600',
-              updated_at: new Date().toISOString()
-            });
-            if (profileError) {
-              console.warn('Erro ao criar perfil no Supabase:', profileError.message);
+          if (error) {
+            const isRateLimit = (error.message || '').toLowerCase().includes('rate limit');
+            if (isRateLimit) {
+              console.warn('Bypass rate limit during signUp:', error.message);
+              showToast('Limite de e-mail atingido no Supabase. Exibindo confirmação para teste!', 'info');
+              setSignUpSuccessEmail(email);
+              return;
             }
-          } catch (pe) {
-            console.error('Erro de perfil durante signup:', pe);
+            throw error;
           }
 
-          showToast('Cadastro realizado com sucesso! ✨', 'success');
-          if (data.session) {
-            onAuthSuccess(data.session);
-          } else {
-            // If sign up succeeds but requires email verification
-            showToast('Verifique seu e-mail para confirmar a conta! 📩', 'info');
+          // Note: Sometimes email confirmation is required depending on Supabase settings.
+          // We will insert an initial profile if we have a user ID.
+          if (data.user) {
+            try {
+              // Upsert a default profile row for this user
+              const { error: profileError } = await supabase.from('user_profile').upsert({
+                id: data.user.id,
+                name: name || email.split('@')[0],
+                avatar_url: '',
+                avatar_emoji: '👩‍🎨',
+                avatar_color: 'from-purple-500 to-indigo-600',
+                updated_at: new Date().toISOString()
+              });
+              if (profileError) {
+                console.warn('Erro ao criar perfil no Supabase:', profileError.message);
+              }
+            } catch (pe) {
+              console.error('Erro de perfil durante signup:', pe);
+            }
+
+            showToast('Cadastro realizado com sucesso! ✨', 'success');
+            // Always show the email verification success screen as requested by the user
             setSignUpSuccessEmail(email);
+          }
+        } catch (signUpErr: any) {
+          const isRateLimit = (signUpErr.message || '').toLowerCase().includes('rate limit');
+          if (isRateLimit) {
+            console.warn('Bypass rate limit in signup catch block:', signUpErr.message);
+            showToast('Limite de e-mail atingido no Supabase. Exibindo confirmação para teste!', 'info');
+            setSignUpSuccessEmail(email);
+          } else {
+            throw signUpErr;
           }
         }
       } else {
@@ -261,7 +276,7 @@ export function AuthScreen({ onAuthSuccess, onBypassOffline, showToast }: AuthSc
                 {isLoading ? (
                   <Loader className="w-4 h-4 animate-spin text-black" />
                 ) : (
-                  <span>{isSignUp ? 'Cadastrar e Entrar' : 'Entrar no Painel'}</span>
+                  <span>{isSignUp ? 'Cadastrar' : 'Entrar no Painel'}</span>
                 )}
               </button>
             </form>

@@ -76,6 +76,12 @@ export default function App() {
   const [showMenuDrawer, setShowMenuDrawer] = useState<boolean>(false);
   const [showNotesModal, setShowNotesModal] = useState<boolean>(false);
   
+  // --- PASSWORD UPDATE STATE ---
+  const [showPasswordSection, setShowPasswordSection] = useState<boolean>(false);
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState<boolean>(false);
+  
   // --- SUPABASE SYNC STATE ---
   const [supabaseLoading, setSupabaseLoading] = useState<boolean>(true);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
@@ -584,7 +590,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#070708] text-white flex justify-center py-0 sm:py-8 relative overflow-x-hidden" id="premium-creator-desktop-workspace">
+    <div className="min-h-screen h-[100dvh] sm:h-auto bg-[#070708] text-white flex justify-center py-0 sm:py-8 relative overflow-hidden sm:overflow-x-hidden" id="premium-creator-desktop-workspace">
       
       {/* ATMOSPHERIC LUXURY SHADOW PROJECTIONS */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[350px] bg-white/5 rounded-full blur-[140px] pointer-events-none" />
@@ -602,7 +608,7 @@ export default function App() {
 
       {/* Main Container - styled like the luxury matte-black iPhone bezel mockups */}
       <div 
-        className="w-full max-w-[430px] h-screen sm:h-[880px] max-h-screen sm:max-h-[880px] bg-[#0A0A0C] border-0 sm:border-[12px] border-zinc-900 rounded-none sm:rounded-[48px] overflow-hidden relative shadow-2xl flex flex-col justify-between pb-16 animate-fade-in" 
+        className="w-full max-w-[430px] h-[100dvh] sm:h-[880px] max-h-[100dvh] sm:max-h-[880px] bg-[#0A0A0C] border-0 sm:border-[12px] border-zinc-900 rounded-none sm:rounded-[48px] overflow-hidden relative shadow-2xl flex flex-col justify-between pb-16 animate-fade-in" 
         id="app-viewport-inner"
         style={{ contentVisibility: 'auto' }}
       >
@@ -1429,6 +1435,115 @@ export default function App() {
                     </div>
                   </>
                 )}
+
+                {/* Change Password Configuration Section */}
+                <div className="pt-3 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!sessionUser) {
+                        showToast('Você precisa estar conectado via Supabase para alterar sua senha!', 'info');
+                        return;
+                      }
+                      setShowPasswordSection(!showPasswordSection);
+                    }}
+                    className="w-full py-2 px-3 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-1.5 select-none">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-purple-400"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      <span>Alteração de Senha</span>
+                    </div>
+                    <span className="text-[9px] text-zinc-500">{showPasswordSection ? '▲' : '▼'}</span>
+                  </button>
+
+                  {showPasswordSection && sessionUser && (
+                    <div className="mt-3 space-y-3 p-3 bg-zinc-950 rounded-2xl border border-zinc-850 animate-fade-in text-left">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 block uppercase tracking-wider">
+                          Nova Senha Secreta
+                        </label>
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Mínimo de 6 caracteres..."
+                          className="w-full p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-xs focus:border-zinc-600 outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 block uppercase tracking-wider">
+                          Confirmar Nova Senha
+                        </label>
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Confirme sua nova senha..."
+                          className="w-full p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-xs focus:border-zinc-600 outline-none"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isUpdatingPassword}
+                        onClick={async () => {
+                          if (!newPassword || !confirmPassword) {
+                            showToast('Por favor, preencha as senhas de alteração.', 'error');
+                            return;
+                          }
+                          if (newPassword !== confirmPassword) {
+                            showToast('As senhas digitadas não coincidem.', 'error');
+                            return;
+                          }
+                          if (newPassword.length < 6) {
+                            showToast('A redefinição exige no mínimo 6 caracteres.', 'error');
+                            return;
+                          }
+
+                          setIsUpdatingPassword(true);
+                          try {
+                            const { error } = await supabase.auth.updateUser({
+                              password: newPassword
+                            });
+
+                            if (error) {
+                              showToast(`Falha ao salvar senha: ${error.message}`, 'error');
+                            } else {
+                              showToast('Sua senha foi redefinida com sucesso! 🔒', 'success');
+                              setNewPassword('');
+                              setConfirmPassword('');
+                              setShowPasswordSection(false);
+                            }
+                          } catch (err: any) {
+                            showToast(`Erro de conexão: ${err.message || err}`, 'error');
+                          } finally {
+                            setIsUpdatingPassword(false);
+                          }
+                        }}
+                        className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:from-zinc-805 disabled:to-zinc-800 text-white font-extrabold text-[10px] rounded-xl border-none cursor-pointer uppercase tracking-wider flex items-center justify-center gap-1.5 transition"
+                      >
+                        {isUpdatingPassword ? (
+                          <>
+                            <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            <span>Processando...</span>
+                          </>
+                        ) : (
+                          <span>Salvar Nova Senha</span>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {!sessionUser && (
+                    <p className="text-[8px] text-zinc-500 mt-2 leading-normal italic text-center select-none">
+                      🔒 Senha: Disponível apenas no acesso autenticado via e-mail e Supabase.
+                    </p>
+                  )}
+                </div>
               </div>
 
               <button
