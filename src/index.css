@@ -1,0 +1,566 @@
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Oswald", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Oswald", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  /* Fonts */
+  --font-sans: "Oswald", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Theme Core - Cinematic Dark Mode Modernist Theme */
+  --bg-primary: #0A0A0C; 
+  --text-primary: #FFFFFF; 
+  --text-secondary: #A1A1AA; 
+  --text-muted: #71717A;
+  
+  --card-bg: #121215;
+  --card-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  --card-shadow-hover: 0 15px 45px rgba(0,0,0,0.7);
+  --card-border: 1px solid rgba(255, 255, 255, 0.08); /* Minimalist outline borders */
+  
+  --header-gradient: linear-gradient(135deg, #0A0A0C 0%, #16161C 100%);
+  --header-text: #FFFFFF;
+  
+  --input-bg: #16161A;
+  --input-border: 1px solid rgba(255, 255, 255, 0.12);
+  --input-text: #FFFFFF;
+  
+  --btn-primary-bg: #FFFFFF;
+  --btn-primary-text: #000000;
+  --btn-secondary-bg: #1F1F24;
+  --btn-secondary-text: #FFFFFF;
+
+  --nav-bg: rgba(10, 10, 12, 0.96);
+  --nav-border: rgba(255, 255, 255, 0.08);
+  --nav-text: #A1A1AA;
+  --nav-text-active: #FFFFFF;
+
+  /* Status Colors (Sleek, eye-safe high contrast in dark mode) */
+  --status-pago-bg: rgba(52, 211, 153, 0.15);
+  --status-pago-text: #34D399;
+  --status-aberto-bg: rgba(248, 113, 113, 0.15);
+  --status-aberto-text: #F87171;
+  --status-parcial-bg: rgba(251, 191, 36, 0.15);
+  --status-parcial-text: #FBBF24;
+  --status-fixo-bg: rgba(167, 139, 250, 0.15);
+  --status-fixo-text: #A78BFA;
+}
+
+/* Identical values for html.dark so theme change matches perfectly */
+html.dark, .dark {
+  --bg-primary: #0A0A0C; 
+  --text-primary: #FFFFFF; 
+  --text-secondary: #A1A1AA; 
+  --text-muted: #71717A;
+  
+  --card-bg: #121215;
+  --card-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  --card-shadow-hover: 0 15px 45px rgba(0,0,0,0.7);
+  --card-border: 1px solid rgba(255, 255, 255, 0.08);
+  
+  --header-gradient: linear-gradient(135deg, #0A0A0C 0%, #16161C 100%);
+  --header-text: #FFFFFF;
+  
+  --input-bg: #16161A;
+  --input-border: 1px solid rgba(255, 255, 255, 0.12);
+  --input-text: #FFFFFF;
+  
+  --btn-primary-bg: #FFFFFF;
+  --btn-primary-text: #000000;
+  --btn-secondary-bg: #1F1F24;
+  --btn-secondary-text: #FFFFFF;
+
+  --nav-bg: rgba(10, 10, 12, 0.96);
+  --nav-border: rgba(255, 255, 255, 0.08);
+  --nav-text: #A1A1AA;
+  --nav-text-active: #FFFFFF;
+
+  /* Status Colors */
+  --status-pago-bg: rgba(52, 211, 153, 0.15);
+  --status-pago-text: #34D399;
+  --status-aberto-bg: rgba(248, 113, 113, 0.15);
+  --status-aberto-text: #F87171;
+  --status-parcial-bg: rgba(251, 191, 36, 0.15);
+  --status-parcial-text: #FBBF24;
+  --status-fixo-bg: rgba(167, 139, 250, 0.15);
+  --status-fixo-text: #A78BFA;
+}
+
+/* Force standard font and generic transitions */
+* {
+  font-family: var(--font-sans), "Plus Jakarta Sans", sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6, .display-luxury, .font-serif, [class*="font-serif"], button, nav button, select, [id*="tabs"] {
+  font-family: "Oswald", sans-serif !important;
+}
+
+/* Smoother color theme transitions */
+body, html, div, header, nav, button, input, textarea, select {
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Base Body Styles */
+body {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  margin: 0;
+}
+
+/* Root workspace override */
+#premium-creator-desktop-workspace {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Elegant ambient light effects - make them softer in light mode, beautiful in dark */
+#premium-creator-desktop-workspace > div[class*="bg-indigo-950/10"] {
+  background-color: rgba(167, 139, 250, 0.04) !important;
+}
+.dark #premium-creator-desktop-workspace > div[class*="bg-indigo-950/10"] {
+  background-color: rgba(167, 139, 250, 0.12) !important;
+}
+
+#premium-creator-desktop-workspace > div[class*="bg-purple-950/5"] {
+  background-color: rgba(249, 168, 212, 0.03) !important;
+}
+.dark #premium-creator-desktop-workspace > div[class*="bg-purple-950/5"] {
+  background-color: rgba(249, 168, 212, 0.08) !important;
+}
+
+/* Header customization - Minimalist dark header bar */
+#app-viewport-inner header {
+  background: var(--header-gradient) !important;
+  border-bottom: var(--card-border) !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+#app-viewport-inner header h1,
+#app-viewport-inner header span:not(#moon-theme-button span) {
+  color: var(--header-text) !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+#app-viewport-inner header div[class*="bg-[#A78BFA]/10"] {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* iPhone simulator wrapper styling - luxury copper/gold-toned side button cases */
+#iphone-mockup-frame {
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.4) !important;
+}
+.dark #iphone-mockup-frame {
+  box-shadow: 0 30px 120px rgba(0, 0, 0, 0.6) !important;
+}
+
+#iphone-mockup-frame > div {
+  background-color: #FFFFFF !important; /* Beautiful pristine white mockup bezel */
+  border-color: #F3E8FF !important;
+}
+
+/* iPhone Screen inner viewports */
+#iphone-mockup-frame #app-viewport-inner,
+#iphone-mockup-frame [id^="mobile-"] {
+  background-color: var(--bg-primary) !important;
+}
+
+#iphone-mockup-frame div[class*="bg-[#050505]"],
+#iphone-mockup-frame div[class*="bg-slate-950"],
+#iphone-mockup-frame div[class*="bg-black"] {
+  background-color: var(--bg-primary) !important;
+}
+
+/* Desktop Fullscreen layout element */
+#premium-creator-desktop-workspace > div.w-full.max-w-4xl {
+  background-color: var(--bg-primary) !important;
+  border: var(--card-border) !important;
+  box-shadow: var(--card-shadow) !important;
+}
+
+/* All Card Styles (Stats, Charts, Notes, Clients, Form, Calendar) */
+#stats-grid-container > div,
+#weekly-appointments-card,
+#quick-notes-component,
+[id^="client-card-"],
+#client-form-container,
+#visual-calendar-component,
+#desktop-tools-dock > div {
+  background: var(--card-bg) !important;
+  border: var(--card-border) !important;
+  box-shadow: var(--card-shadow) !important;
+  border-radius: 24px !important;
+}
+
+#stats-grid-container > div:hover,
+[id^="client-card-"]:hover,
+#quick-notes-component:hover {
+  box-shadow: var(--card-shadow-hover) !important;
+  transform: translateY(-2px);
+}
+
+/* Universal Text & Subtext mapping */
+h2, h3, h4, h5, h6 {
+  color: var(--text-primary) !important;
+}
+
+p, label, span:not(#global-system-toast span):not(#add-client-quick-button span) {
+  color: var(--text-secondary);
+}
+
+/* Special Advice container (Pink-purple custom beauty banner) */
+.bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] {
+  background: linear-gradient(135deg, #FFF1F2 0%, #F5F3FF 100%) !important;
+  border: 1px solid #F5D0FE !important;
+  border-radius: 24px !important;
+}
+.dark .bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] {
+  background: linear-gradient(135deg, #20152F 0%, #150E20 100%) !important;
+  border: var(--card-border) !important;
+}
+
+.bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] h3 {
+  color: #BE185D !important;
+}
+.dark .bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] h3 {
+  color: #F9A8D4 !important;
+}
+
+.bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] p {
+  color: #4C1D95 !important;
+}
+.dark .bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] p {
+  color: #DDD6FE !important;
+}
+
+/* Advice footer buttons */
+.bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] button {
+  background-color: #FFFFFF !important;
+  border: 1px solid #E9D5FF !important;
+  color: #6B21A8 !important;
+}
+.dark .bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] button {
+  background-color: #211A30 !important;
+  border: 1px solid #3B2E54 !important;
+  color: #D8B4FE !important;
+}
+.bg-gradient-to-br.from-\[\#0D1021\].to-\[\#04060C\] button:hover {
+  background-color: #F3E8FF !important;
+}
+
+/* Input Fields (Text area, selects, text inputs) */
+input[type="text"], 
+input[type="number"], 
+input[type="date"], 
+input[type="time"], 
+textarea, 
+select {
+  background-color: var(--input-bg) !important;
+  border: var(--input-border) !important;
+  color: var(--input-text) !important;
+  border-radius: 14px !important;
+  font-size: 13px !important;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none !important;
+  border-color: var(--btn-primary-bg) !important;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.22) !important;
+}
+
+/* Tab Filter Controls (Todos, Semana, Fixo, Pagos, Devedores) */
+#list-tabs-container {
+  background-color: rgba(167, 139, 250, 0.05) !important;
+  border: 1px solid rgba(167, 139, 250, 0.1) !important;
+  padding: 4px !important;
+  border-radius: 16px !important;
+}
+.dark #list-tabs-container {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(167, 139, 250, 0.15) !important;
+}
+
+#list-tabs-container button {
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+}
+
+#list-tabs-container button[class*="bg-neutral-800"],
+#list-tabs-container button[class*="bg-white"] {
+  background-color: var(--card-bg) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.08) !important;
+}
+
+/* Bottom Tab Bar (Custom Glass Overlay) */
+#mobile-tab-deck {
+  background-color: var(--nav-bg) !important;
+  border-top: 1px solid var(--nav-border) !important;
+  backdrop-filter: blur(16px) !important;
+  border-bottom-left-radius: 44px !important;
+  border-bottom-right-radius: 44px !important;
+}
+
+#mobile-tab-deck button span:first-child {
+  opacity: 0.6;
+  filter: grayscale(15%);
+}
+
+#mobile-tab-deck button span.scale-110 {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+#mobile-tab-deck button span:last-child {
+  color: var(--text-secondary) !important;
+}
+
+#mobile-tab-deck button span.text-white {
+  color: var(--btn-primary-bg) !important;
+  font-weight: 800 !important;
+}
+
+/* iOS Dynamic Island display */
+div[class*="absolute top-5 left-1/2"] {
+  background-color: #000000 !important;
+}
+
+/* System Calendar Days */
+[id^="calendar-cell-"] {
+  background-color: var(--card-bg) !important;
+  border: var(--card-border) !important;
+  border-radius: 12px !important;
+}
+[id^="calendar-cell-"] span {
+  color: var(--text-primary) !important;
+}
+
+/* Specific Calendar Slot Statuses (Feminine beautiful pastels) */
+.bg-\[\#21090F\] {
+  background-color: #FFF1F2 !important;
+  border: 1px solid #FECDD3 !important;
+}
+.bg-\[\#1E1106\] {
+  background-color: #FEF3C7 !important;
+  border: 1px solid #FDE68A !important;
+}
+.bg-\[\#06120A\] {
+  background-color: #ECFDF5 !important;
+  border: 1px solid #A7F3D0 !important;
+}
+
+.dark .bg-\[\#21090F\] {
+  background-color: rgba(225, 29, 72, 0.15) !important;
+  border: 1px solid rgba(225, 29, 72, 0.3) !important;
+}
+.dark .bg-\[\#1E1106\] {
+  background-color: rgba(217, 119, 6, 0.15) !important;
+  border: 1px solid rgba(217, 119, 6, 0.3) !important;
+}
+.dark .bg-\[\#06120A\] {
+  background-color: rgba(5, 150, 105, 0.15) !important;
+  border: 1px solid rgba(5, 150, 105, 0.3) !important;
+}
+
+/* Quick Notes Component paper lines layout */
+#notes-textarea {
+  background-image: linear-gradient(rgba(167, 139, 250, 0.08) 1px, transparent 1px) !important;
+  background-size: 100% 24px !important;
+  line-height: 24px !important;
+}
+
+/* Notifications Alert Deck custom cards */
+#alert-payments {
+  background: linear-gradient(135deg, #FFF1F2 0%, #FFE4E6 100%) !important;
+  border: 1px solid #FECDD3 !important;
+}
+#alert-payments h4, #alert-payments h3 { color: #9F1239 !important; }
+#alert-payments p { color: #BE123C !important; }
+
+#alert-no-response {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%) !important;
+  border: 1px solid #FDE68A !important;
+}
+#alert-no-response h4, #alert-no-response h3 { color: #92400E !important; }
+#alert-no-response p { color: #B45309 !important; }
+
+#alert-pending-date {
+  background: linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%) !important;
+  border: 1px solid #D1D5DB !important;
+}
+#alert-pending-date h4, #alert-pending-date h3 { color: #374151 !important; }
+#alert-pending-date p { color: #4B5563 !important; }
+
+/* Dark mode variations for standard alerts */
+.dark #alert-payments {
+  background: linear-gradient(135deg, #3C161E 0%, #20040A 100%) !important;
+  border: 1px solid #E11D48/30 !important;
+}
+.dark #alert-payments h4, .dark #alert-payments p { color: #FDA4AF !important; }
+
+.dark #alert-no-response {
+  background: linear-gradient(135deg, #3F2312 0%, #210D03 100%) !important;
+  border: 1px solid #D97706/30 !important;
+}
+.dark #alert-no-response h4, .dark #alert-no-response p { color: #FDE68A !important; }
+
+.dark #alert-pending-date {
+  background: linear-gradient(135deg, #1C1726 0%, #110E17 100%) !important;
+  border: var(--card-border) !important;
+}
+.dark #alert-pending-date h4, .dark #alert-pending-date p { color: #E9D5FF !important; }
+
+/* Status Badges */
+.status-badge-pago {
+  background-color: var(--status-pago-bg) !important;
+  color: var(--status-pago-text) !important;
+}
+.status-badge-aberto {
+  background-color: var(--status-aberto-bg) !important;
+  color: var(--status-aberto-text) !important;
+}
+.status-badge-parcial {
+  background-color: var(--status-parcial-bg) !important;
+  color: var(--status-parcial-text) !important;
+}
+.status-badge-fixo {
+  background-color: var(--status-fixo-bg) !important;
+  color: var(--status-fixo-text) !important;
+}
+
+/* Beautiful custom buttons inside Cards & Forms */
+button.bg-white,
+button[class*="bg-white"]:not(#desktop-tools-dock button) {
+  background-color: var(--btn-primary-bg) !important;
+  color: var(--btn-primary-text) !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+}
+
+button.bg-white:hover,
+button[class*="bg-white"]:not(#desktop-tools-dock button):hover {
+  background-color: #F4F4F5 !important;
+  color: #000000 !important;
+  box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1) !important;
+}
+
+#btn-cancel-form {
+  color: var(--text-secondary) !important;
+}
+#btn-cancel-form:hover {
+  color: var(--text-primary) !important;
+}
+
+/* Dark mode Moon Button Style adjustments */
+#moon-theme-button {
+  background-color: var(--card-bg) !important;
+  border: var(--card-border) !important;
+  font-size: 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Elegant and subtle grid progress lines matching */
+div[class*="border-neutral-800"],
+div[class*="border-neutral-900"],
+div[class*="border-white/[0.04]"],
+div[class*="border-white/[0.06]"],
+span[class*="border-neutral-800"],
+header[class*="border-white/"] {
+  border-color: var(--card-border) !important;
+}
+
+/* Dashboard advice content bullet styling and payment buttons */
+.payment-option-btn {
+  border: 1px solid var(--input-border) !important;
+  background-color: rgba(255, 255, 255, 0.02) !important;
+  color: var(--text-secondary) !important;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+}
+
+.payment-option-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+}
+
+/* Active states for each status, requested by user */
+.payment-option-btn.active-pago {
+  background-color: #059669 !important; /* Verde (Emerald) */
+  color: #ffffff !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.3) !important;
+}
+
+.payment-option-btn.active-em_aberto {
+  background-color: #dc2626 !important; /* Vermelho (Vivid Red/Rose) */
+  color: #ffffff !important;
+  border-color: #f43f5e !important;
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.3) !important;
+}
+
+.payment-option-btn.active-pago_parcial {
+  background-color: #f59e0b !important; /* Amarelo (Vibrant Amber) */
+  color: #000000 !important;
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.3) !important;
+}
+
+.payment-option-btn.active-fixo_mensal {
+  background-color: #2563eb !important; /* Azul (Vibrant Blue) */
+  color: #ffffff !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Progress indicator capsule */
+button[id^="btn-progress-"] {
+  color: var(--text-secondary);
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+button[id^="btn-progress-"]:hover {
+  color: var(--text-primary);
+}
+
+button[id^="btn-progress-"][class*="bg-zinc-800"],
+button[id^="btn-progress-"][class*="bg-white"] {
+  background-color: var(--btn-primary-bg) !important;
+  color: var(--btn-primary-text) !important;
+}
+
+/* Global design refinements */
+#desktop-tools-dock p {
+  color: var(--text-muted) !important;
+}
+
+svg {
+  stroke: var(--text-secondary);
+}
+
+/* Smooth enter animations */
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Creative",
+  "description": "Plataforma completa para gestão de clientes, calendário de agendamentos e progresso de projetos para profissionais de marketing de conteúdo, fotografia e vídeo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

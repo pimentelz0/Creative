@@ -1,0 +1,1599 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { Client, Appointment, Note, PaymentStatus, ProjectProgress, UserProfile } from './types';
+import { 
+  INITIAL_CLIENTS, 
+  INITIAL_APPOINTMENTS, 
+  INITIAL_NOTE 
+} from './initialData';
+import { 
+  getClientsFromStorage, 
+  getAppointmentsFromStorage, 
+  getQuickNoteFromStorage, 
+  getNotesFromStorage,
+  saveClientsToStorage,
+  saveAppointmentsToStorage,
+  saveDarkModeToStorage,
+  saveUserProfileToStorage,
+  getUserProfileFromStorage,
+  saveQuickNoteToStorage,
+  saveNotesToStorage
+} from './utils';
+import { NotificationsAlerts } from './components/NotificationsAlerts';
+import { DashboardStats } from './components/DashboardStats';
+import { ClientForm } from './components/ClientForm';
+import { ClientList } from './components/ClientList';
+import { VisualCalendar } from './components/VisualCalendar';
+import { QuickNotes } from './components/QuickNotes';
+import { AnalyticsView } from './components/AnalyticsView';
+import { AuthScreen } from './components/AuthScreen';
+import { 
+  supabase,
+  testSupabaseConnection,
+  fetchClientsFromSupabase,
+  saveClientToSupabase,
+  deleteClientFromSupabase,
+  fetchAppointmentsFromSupabase,
+  saveAppointmentToSupabase,
+  deleteAppointmentFromSupabase,
+  fetchNoteFromSupabase,
+  fetchNotesFromSupabase,
+  deleteNoteFromSupabase,
+  fetchUserProfileFromSupabase,
+  saveUserProfileToSupabase,
+  saveNoteToSupabase,
+  SUPABASE_SETUP_SQL
+} from './supabaseClient';
+
+const formatCurrency = (val: number) => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+};
+
+const DEFAULT_PROFILE: UserProfile = {
+  name: 'Karol Gonçalo',
+  avatarUrl: '',
+  avatarEmoji: '🎥',
+  avatarColor: 'from-zinc-800 to-black'
+};
+
+export default function App() {
+  // --- STATE ---
+  const [clients, setClients] = useState<Client[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [quickNote, setQuickNote] = useState<Note>({ id: 'quick_note', content: '', updatedAt: '' });
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [activeNote, setActiveNote] = useState<Note | null>(null);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+  
+  // --- USER PROFILE STATE ---
+  const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+  const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
+  const [showMenuDrawer, setShowMenuDrawer] = useState<boolean>(false);
+  const [showNotesModal, setShowNotesModal] = useState<boolean>(false);
+  
+  // --- SUPABASE SYNC STATE ---
+  const [supabaseLoading, setSupabaseLoading] = useState<boolean>(true);
+  const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
+  const [showSqlSetupModal, setShowSqlSetupModal] = useState<boolean>(false);
+
+  
+  const [currentSection, setCurrentSection] = useState<'dashboard' | 'clients' | 'calendar' | 'analytics'>('dashboard');
+  const [isClientFormOpen, setIsClientFormOpen] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [activeClientsTab, setActiveClientsTab] = useState('todos');
+
+  // Active Project Detail Modal (for mockup high fidelity mockup cards)
+  const [selectedMockProject, setSelectedMockProject] = useState<{
+    title: string;
+    category: string;
+    progress: number;
+    image: string;
+    clientContact: string;
+    details: string;
+    serviceType: string;
+  } | null>(null);
+
+  // --- AUTH SESSION STATE ---
+  const [sessionUser, setSessionUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [bypassOffline, setBypassOffline] = useState<boolean>(() => {
+    return localStorage.getItem('creative_bypass_offline') === 'true';
+  });
+
+  // --- PERSISTENCE & AUTH SYNC EFFECTS ---
+  
+  // 1. Listen for Supabase Authentication State changes
+  useEffect(() => {
+    // Force light beautiful clean theme as requested by user
+    document.documentElement.classList.remove('dark');
+    saveDarkModeToStorage(false);
+
+    // Initial check for active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSessionUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSessionUser(session?.user ?? null);
+        setAuthLoading(false);
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // 2. Synchronize internal application states when user login changes
+  useEffect(() => {
+    // Immediately pull from localStorage to keep UI super responsive (optimistic load)
+    const loadedClients = getClientsFromStorage(INITIAL_CLIENTS);
+    const loadedAppointments = getAppointmentsFromStorage(INITIAL_APPOINTMENTS);
+    const loadedNote = getQuickNoteFromStorage(INITIAL_NOTE);
+    const loadedNotes = getNotesFromStorage([INITIAL_NOTE]);
+    const loadedProfile = getUserProfileFromStorage(DEFAULT_PROFILE);
+
+    setClients(loadedClients);
+    setAppointments(loadedAppointments);
+    setQuickNote(loadedNote);
+    setNotes(loadedNotes);
+    setProfile(loadedProfile);
+
+    if (!sessionUser) {
+      setSupabaseLoading(false);
+      return;
+    }
+
+    setSupabaseLoading(true);
+
+    const initSupabase = async () => {
+      try {
+        const isOnline = await testSupabaseConnection();
+        setSupabaseConnected(isOnline);
+        
+        if (isOnline) {
+          const cloudClients = await fetchClientsFromSupabase();
+          const cloudAppts = await fetchAppointmentsFromSupabase();
+          const cloudNote = await fetchNoteFromSupabase();
+          const cloudNotes = await fetchNotesFromSupabase();
+          const cloudProfile = await fetchUserProfileFromSupabase();
+
+          if (cloudClients !== null && cloudClients.length > 0) {
+            setClients(cloudClients);
+            saveClientsToStorage(cloudClients);
+          }
+          if (cloudAppts !== null && cloudAppts.length > 0) {
+            setAppointments(cloudAppts);
+            saveAppointmentsToStorage(cloudAppts);
+          }
+          if (cloudNote !== null) {
+            setQuickNote(cloudNote);
+          }
+          if (cloudNotes !== null && cloudNotes.length > 0) {
+            setNotes(cloudNotes);
+            saveNotesToStorage(cloudNotes);
+          }
+          if (cloudProfile !== null) {
+            setProfile(cloudProfile);
+            saveUserProfileToStorage(cloudProfile);
+          }
+        }
+      } catch (err) {
+        console.error('Falha ao sincronizar com Supabase:', err);
+      } finally {
+        setSupabaseLoading(false);
+      }
+    };
+
+    initSupabase();
+  }, [sessionUser]);
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      localStorage.removeItem('creative_bypass_offline');
+      setBypassOffline(false);
+      setSessionUser(null);
+      showToast('Sessão encerrada com sucesso! Volte sempre! 👋', 'success');
+    } catch (e) {
+      showToast('Erro ao encerrar sessão.', 'error');
+    }
+  };
+
+  const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  };
+
+  const handleSaveClient = async (clientData: Omit<Client, 'id' | 'createdAt'> & { id?: string }) => {
+    try {
+      let updatedClients: Client[];
+      let targetClient: Client;
+
+      if (clientData.id) {
+        const existing = clients.find(c => c.id === clientData.id);
+        targetClient = {
+          ...existing!,
+          name: clientData.name,
+          contact: clientData.contact,
+          service: clientData.service,
+          totalValue: clientData.totalValue,
+          paidValue: clientData.paidValue,
+          paymentStatus: clientData.paymentStatus,
+          progress: clientData.progress,
+          observations: clientData.observations
+        };
+        updatedClients = clients.map(c => c.id === clientData.id ? targetClient : c);
+        showToast(`Cadastro de "${clientData.name}" atualizado! ✨`);
+      } else {
+        targetClient = {
+          id: 'c_' + Date.now(),
+          name: clientData.name,
+          contact: clientData.contact,
+          service: clientData.service,
+          totalValue: clientData.totalValue,
+          paidValue: clientData.paidValue,
+          paymentStatus: clientData.paymentStatus,
+          progress: clientData.progress,
+          observations: clientData.observations,
+          createdAt: new Date().toISOString()
+        };
+        updatedClients = [targetClient, ...clients];
+        showToast(`"${clientData.name}" adicionada com absoluto sucesso! 🚀`);
+      }
+
+      setClients(updatedClients);
+      saveClientsToStorage(updatedClients);
+      setIsClientFormOpen(false);
+      setClientToEdit(null);
+
+      // Sincroniza de forma assíncrona com Supabase
+      if (supabaseConnected) {
+        await saveClientToSupabase(targetClient);
+      }
+    } catch (err) {
+      showToast('Ocorreu um problema ao salvar.', 'error');
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    try {
+      const target = clients.find(c => c.id === clientId);
+      const updated = clients.filter(c => c.id !== clientId);
+      setClients(updated);
+      saveClientsToStorage(updated);
+      showToast(`O cadastro de "${target ? target.name : 'Cliente'}" foi removido.`, 'info');
+
+      if (supabaseConnected) {
+        await deleteClientFromSupabase(clientId);
+      }
+    } catch (err) {
+      showToast('Erro ao remover cliente.', 'error');
+    }
+  };
+
+  const handleUpdateProgress = async (clientId: string, newProgress: ProjectProgress) => {
+    try {
+      const updated = clients.map(c => {
+        if (c.id === clientId) {
+          const updatedClient = { ...c, progress: newProgress };
+          if (supabaseConnected) {
+            saveClientToSupabase(updatedClient);
+          }
+          return updatedClient;
+        }
+        return c;
+      });
+      setClients(updated);
+      saveClientsToStorage(updated);
+      
+      const progressLabel = {
+        roteiro: 'Roteiro 📝',
+        gravado: 'Gravado 🎥',
+        editado: 'Editado 💻',
+        entregue: 'Entregue 🚀'
+      }[newProgress];
+
+      showToast(`Etapa atualizada para: ${progressLabel}`);
+    } catch (err) {
+      showToast('Erro ao atualizar progresso.', 'error');
+    }
+  };
+
+  const handleAddAppointment = async (apptData: Omit<Appointment, 'id'> & { id?: string }) => {
+    try {
+      const newAppt: Appointment = {
+        id: 'a_' + Date.now(),
+        clientId: apptData.clientId,
+        customTitle: apptData.customTitle,
+        date: apptData.date,
+        status: apptData.status,
+        time: apptData.time,
+        observations: apptData.observations
+      };
+
+      const updated = [newAppt, ...appointments];
+      setAppointments(updated);
+      saveAppointmentsToStorage(updated);
+      showToast('Compromisso agendado no calendário com sucesso! 📅');
+
+      if (supabaseConnected) {
+        await saveAppointmentToSupabase(newAppt);
+      }
+    } catch (err) {
+      showToast('Erro ao salvar agendamento.', 'error');
+    }
+  };
+
+  const handleDeleteAppointment = async (apptId: string) => {
+    try {
+      const updated = appointments.filter(a => a.id !== apptId);
+      setAppointments(updated);
+      saveAppointmentsToStorage(updated);
+      showToast('Reserva excluída com sucesso.', 'info');
+
+      if (supabaseConnected) {
+        await deleteAppointmentFromSupabase(apptId);
+      }
+    } catch (err) {
+      showToast('Erro ao excluir agendamento.', 'error');
+    }
+  };
+
+
+  const handleAlertSelectClient = (clientId: string) => {
+    setCurrentSection('clients');
+    setActiveClientsTab('todos');
+    const targetEl = document.getElementById(`client-card-${clientId}`);
+    if (targetEl) {
+      setTimeout(() => {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }
+    showToast('Visualizando dependência da cliente indicada.', 'info');
+  };
+
+  // Switch filter category click on mockup actions
+  const handleCategoryFilter = (category: 'photo' | 'video' | 'social') => {
+    setCurrentSection('clients');
+    if (category === 'video') {
+      setActiveClientsTab('todos');
+      showToast('Filtro de Vídeos / Reels aplicado! Filtre os clientes abaixo. 🎥', 'info');
+    } else if (category === 'photo') {
+      setActiveClientsTab('todos');
+      showToast('Filtro de Ensaios Fotográficos aplicado! Filtre os clientes abaixo. 📷', 'info');
+    } else {
+      setActiveClientsTab('fixos');
+      showToast('Filtrando Clientes de Gestão de Mídia / Redes. 🔗', 'info');
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#070708] text-white flex flex-col justify-center items-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#A78BFA] mb-4"></div>
+        <p className="text-[10px] uppercase tracking-[0.2em] font-sans font-black text-zinc-500">Iniciando Creative Studio...</p>
+      </div>
+    );
+  }
+
+  if (!sessionUser && !bypassOffline) {
+    return (
+      <div className="min-h-screen bg-[#070708] text-white flex justify-center py-0 sm:py-8 relative overflow-x-hidden" id="premium-creator-auth-workspace">
+        {/* TOAST SYSTEM (MINIMALIST MATTE BLACK GLASS NOTIFICATION) */}
+        {toastMessage && (
+          <div className="fixed bottom-6 right-6 z-50 animate-fade-in" id="global-system-toast">
+            <div className="px-5 py-3 rounded-xl bg-zinc-900/90 text-white border border-zinc-800 shadow-2xl text-xs font-bold flex items-center gap-3 backdrop-blur-md">
+              <span className="text-white text-sm">✦</span>
+              <p>{toastMessage.text}</p>
+            </div>
+          </div>
+        )}
+        <AuthScreen
+          onAuthSuccess={(session) => {
+            setSessionUser(session.user);
+          }}
+          onBypassOffline={() => {
+            localStorage.setItem('creative_bypass_offline', 'true');
+            setBypassOffline(true);
+            showToast('Modo Offline ativado! Seus dados ficam salvos no navegador.', 'info');
+          }}
+          showToast={showToast}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#070708] text-white flex justify-center py-0 sm:py-8 relative overflow-x-hidden" id="premium-creator-desktop-workspace">
+      
+      {/* ATMOSPHERIC LUXURY SHADOW PROJECTIONS */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[350px] bg-white/5 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-20 right-10 w-[250px] h-[250px] bg-zinc-800/10 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* TOAST SYSTEM (MINIMALIST MATTE BLACK GLASS NOTIFICATION) */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-fade-in" id="global-system-toast">
+          <div className="px-5 py-3 rounded-xl bg-zinc-900/90 text-white border border-zinc-800 shadow-2xl text-xs font-bold flex items-center gap-3 backdrop-blur-md">
+            <span className="text-white text-sm">✦</span>
+            <p>{toastMessage.text}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Main Container - styled like the luxury matte-black iPhone bezel mockups */}
+      <div 
+        className="w-full max-w-[430px] h-screen sm:h-[880px] max-h-screen sm:max-h-[880px] bg-[#0A0A0C] border-0 sm:border-[12px] border-zinc-900 rounded-none sm:rounded-[48px] overflow-hidden relative shadow-2xl flex flex-col justify-between pb-16 animate-fade-in" 
+        id="app-viewport-inner"
+        style={{ contentVisibility: 'auto' }}
+      >
+        {/* VIEWPORT CONTENT AREA (SCROLLABLE WITH HIDDEN SCROLLBAR) */}
+        <div className="flex-1 overflow-y-auto scrollbar-none">
+          
+          {/* MOCKUP CAMERA & TIME HEADER BACKGROUND */}
+          <div className="bg-gradient-to-b from-[#16161A] to-[#0A0A0C] text-white pt-6 pb-8 px-6 rounded-none sm:rounded-t-[36px] relative border-b border-white/[0.04]">
+             
+            {/* Real Mockup Header Actions */}
+            <div className="flex items-center justify-between mt-1">
+              {/* Left circular glass button */}
+              <button 
+                onClick={() => setShowMenuDrawer(true)}
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.12] text-white transition cursor-pointer"
+                title="Menu"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-menu"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+              </button>
+ 
+              {/* Logo brand using imported Oswald title headings to match Page 1 */}
+              <div className="text-center select-none">
+                <h1 className="text-2xl font-serif font-bold tracking-[0.2em] uppercase text-white flex items-center justify-center gap-1.5 hover:scale-[1.02] transition-transform">
+                  CREATIVE
+                </h1>
+              </div>
+ 
+              {/* Right circular notification button */}
+              <button 
+                onClick={() => {
+                  showToast('Tudo sob controle! Nenhum prazo vencendo agora.', 'info');
+                }}
+                className="w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.06] border border-white/[0.08] hover:bg-white/[0.12] text-white transition cursor-pointer relative"
+                title="Notificações"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-bell"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              </button>
+            </div>
+          </div>
+ 
+          {/* MAIN BLACK CARD CONTAINER (Slipping up under the beautiful header curve) */}
+          <div className="bg-[#0A0A0C] -mt-2 rounded-t-[28px] pt-4 pb-6 px-5 relative z-10 space-y-6">
+            
+            {/* VIEW 1: DASHBOARD (Home Layout matching the attached mockup perfectly) */}
+            {currentSection === 'dashboard' && (
+              <div className="space-y-6 animate-fade-in" id="mobile-home-viewport">
+                
+                {/* 1. BRAND WELCOME GREETING WITH PROFILE & NEW PROJECT CAP ACTIONS */}
+                <div className="flex items-center justify-between gap-3 bg-zinc-900 border border-zinc-800/80 p-4 rounded-3xl shadow-lg" id="mockup-profile-greet">
+                  <div 
+                    onClick={() => setShowProfileModal(true)}
+                    className="flex items-center gap-3 cursor-pointer hover:opacity-95 transition-all group flex-1"
+                    title="Editar Perfil"
+                  >
+                    {/* Avatar structure */}
+                    <div className="relative shrink-0">
+                      <div className="w-[50px] h-[50px] rounded-full overflow-hidden border border-zinc-700 text-white flex items-center justify-center shadow-inner relative">
+                        {profile.avatarUrl ? (
+                          <img 
+                            src={profile.avatarUrl} 
+                            alt={profile.name} 
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className={`w-full h-full bg-gradient-to-tr ${profile.avatarColor || 'from-zinc-805 to-black'} flex items-center justify-center text-lg`}>
+                            {profile.avatarEmoji || '🎥'}
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[9px] text-white font-bold transition-opacity">
+                          EDITAR
+                        </div>
+                      </div>
+                    </div>
+ 
+                    {/* Greeting Messages */}
+                    <div className="space-y-0.5">
+                      <h3 className="font-extrabold text-white text-xs tracking-wide font-sans flex items-center gap-1 uppercase">
+                        {profile.name}
+                      </h3>
+                      <p className="text-[9px] text-zinc-500 leading-snug font-medium font-sans uppercase tracking-wider">
+                        <span className="text-white underline hover:text-zinc-200 transition-colors">Ajustar Perfil</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+ 
+                 {/* 2. UNIFIED STREAMLINED FLOW - NO FRICTION CATEGORY STEP */}
+                <div className="grid grid-cols-3 gap-2" id="mockup-unified-actions">
+                  <button
+                    onClick={() => {
+                      setClientToEdit(null);
+                      setCurrentSection('clients');
+                      setIsClientFormOpen(true);
+                      showToast('Iniciando registro de trabalho...', 'info');
+                    }}
+                    className="p-3 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded-2xl flex flex-col items-start gap-2.5 transition duration-200 cursor-pointer text-left select-none outline-none group"
+                    type="button"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center group-hover:bg-zinc-200 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-plus"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-white block">Registrar</span>
+                      <span className="text-[7px] text-zinc-500 block mt-0.5 font-sans leading-none">Novo contrato</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setCurrentSection('calendar')}
+                    className="p-3 bg-zinc-900 hover:bg-[#15151a] border border-zinc-800 rounded-2xl flex flex-col items-start gap-2.5 transition duration-200 cursor-pointer text-left select-none outline-none group"
+                    type="button"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-zinc-850 border border-zinc-800 text-white flex items-center justify-center group-hover:bg-zinc-800 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-calendar"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-white block">Agenda</span>
+                      <span className="text-[7px] text-zinc-500 block mt-0.5 font-sans leading-none">Compromissos</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setShowNotesModal(true)}
+                    className="p-3 bg-zinc-900 hover:bg-[#15151a] border border-zinc-800 rounded-2xl flex flex-col items-start gap-2.5 transition duration-200 cursor-pointer text-left select-none outline-none group"
+                    type="button"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-zinc-850 border border-zinc-800 text-white flex items-center justify-center group-hover:bg-zinc-800 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-white block">Bloco Notas</span>
+                      <span className="text-[7px] text-zinc-500 block mt-0.5 font-sans leading-none">Editar salvas</span>
+                    </div>
+                  </button>
+                </div>
+
+                {/* 3. DYNAMIC MEUS PROJETOS SECTION */}
+                <div className="space-y-4 font-sans" id="projects-section-deck">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xs font-black uppercase tracking-wider text-zinc-100">
+                      Projetos Recentes
+                    </h2>
+                    <button 
+                      onClick={() => setCurrentSection('clients')}
+                      className="text-[10px] font-bold text-white hover:underline cursor-pointer bg-transparent border-none"
+                    >
+                      Ver todos &gt;
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    {clients.length === 0 ? (
+                      <div className="p-5 text-center bg-zinc-900/40 border border-zinc-800/60 rounded-2xl shadow-sm text-neutral-400 font-sans">
+                        <span className="text-xl">🎬</span>
+                        <p className="font-bold text-xs text-white mt-2">Nenhum projeto cadastrado</p>
+                        <p className="text-[10px] mt-0.5 text-zinc-400">
+                          Toque em <strong className="text-white">"Criar"</strong> acima para registrar seu primeiro contrato ou bloqueio de agenda!
+                        </p>
+                      </div>
+                    ) : (
+                      clients.slice(0, 3).map(client => {
+                        const progressPct = client.progress === 'entregue' ? 100 : client.progress === 'editado' ? 75 : client.progress === 'gravado' ? 50 : 25;
+                        const progressLabel = client.progress === 'entregue' ? 'Entregue 🚀' : client.progress === 'editado' ? 'Editado 💻' : client.progress === 'gravado' ? 'Gravado 🎥' : 'Roteiro 📝';
+                        const isVideo = client.service.toLowerCase().includes('reels') || client.service.toLowerCase().includes('vídeo') || client.service.toLowerCase().includes('video');
+                        const isPhoto = client.service.toLowerCase().includes('ensaio') || client.service.toLowerCase().includes('fotos') || client.service.toLowerCase().includes('foto');
+                        
+                        const imageThumb = isVideo 
+                          ? 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100&auto=format&fit=crop'
+                          : isPhoto 
+                          ? 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?w=100&auto=format&fit=crop'
+                          : 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=100&auto=format&fit=crop';
+                          
+                        const categoryLabel = isVideo ? 'Vídeo/Reels' : isPhoto ? 'Foto/Ensaio' : 'Gestão/Fixo';
+                        const dotColor = client.progress === 'entregue' ? 'bg-emerald-400' : client.progress === 'editado' ? 'bg-[#9B6EFF]' : client.progress === 'gravado' ? 'bg-zinc-400' : 'bg-status-amber bg-amber-400';
+
+                        return (
+                          <div 
+                            key={client.id}
+                            onClick={() => setSelectedMockProject({
+                              title: client.name,
+                              category: categoryLabel,
+                              progress: progressPct,
+                              image: imageThumb.replace('w=100', 'w=400'),
+                              clientContact: client.contact,
+                              details: client.observations || 'Nenhuma observação informada até o momento para este contrato.',
+                              serviceType: client.service
+                            })}
+                            className="p-3 bg-zinc-900 border border-zinc-800/80 rounded-2xl flex items-center justify-between gap-3 shadow-md hover:scale-[1.01] hover:border-zinc-700 transition cursor-pointer group animate-fade-in"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-[48px] h-[48px] rounded-xl overflow-hidden shrink-0 border border-zinc-800">
+                                <img 
+                                  src={imageThumb} 
+                                  alt={client.name} 
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="min-w-0 leading-tight">
+                                <h4 className="text-xs font-bold text-white truncate group-hover:text-zinc-300 transition">
+                                  {client.name}
+                                </h4>
+                                <span className="inline-flex items-center gap-1.5 text-[9px] font-semibold text-zinc-400 mt-1">
+                                  <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} /> {client.service}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-end gap-1.5 shrink-0 w-24">
+                              <span className="text-[9px] font-bold text-zinc-300">{progressLabel}</span>
+                              <div className="w-full h-1 rounded-full bg-zinc-800 overflow-hidden">
+                                <div className="h-full bg-white rounded-full transition-all duration-300" style={{ width: `${progressPct}%` }} />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. REAL DYNAMIC STATISTICS GRID (NO HARDCODED NUMBERS) */}
+                <div className="space-y-4 font-sans" id="stats-section-deck">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xs font-black uppercase tracking-wider text-zinc-100">
+                      Resumo Financeiro
+                    </h2>
+                    <button 
+                      onClick={() => setCurrentSection('analytics')}
+                      className="text-[10px] font-bold text-white hover:underline cursor-pointer bg-transparent border-none"
+                    >
+                      Módulos &gt;
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3" id="stats-mockup-grid">
+                    
+                    {/* Card 1: Projetos Ativos */}
+                    <div className="p-3 bg-zinc-900 border border-zinc-800/80 rounded-2xl flex flex-col justify-between space-y-3 shadow-md hover:scale-[1.02] transition leading-tight">
+                      <div className="flex items-center gap-2">
+                        <div className="w-[32px] h-[32px] rounded-lg bg-zinc-800 text-zinc-350 flex items-center justify-center shrink-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-briefcase"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block truncate">
+                            Projetos Ativos
+                          </p>
+                          <h4 className="text-sm font-black text-white font-sans mt-0.5">
+                            {clients.length}
+                          </h4>
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-bold text-zinc-300 bg-zinc-800 px-2 py-0.5 rounded-md self-start">
+                        Ativos
+                      </span>
+                    </div>
+
+                    {/* Card 2: Total Recebido */}
+                    <div className="p-3 bg-zinc-900 border border-zinc-800/80 rounded-2xl flex flex-col justify-between space-y-3 shadow-md hover:scale-[1.02] transition leading-tight">
+                      <div className="flex items-center gap-2">
+                        <div className="w-[32px] h-[32px] rounded-lg bg-zinc-800 text-zinc-350 flex items-center justify-center shrink-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-dollar-sign"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block truncate">
+                            Entrada Caixa
+                          </p>
+                          <h4 className="text-xs font-black text-white font-sans mt-0.5 truncate">
+                            {formatCurrency(clients.reduce((acc, c) => acc + c.paidValue, 0))}
+                          </h4>
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-bold text-emerald-400 bg-emerald-900/20 px-2 py-0.5 rounded-md self-start border border-emerald-500/10">
+                        Confirmado
+                      </span>
+                    </div>
+
+                    {/* Card 3: Valores em Aberto */}
+                    <div className="p-3 bg-zinc-900 border border-zinc-800/80 rounded-2xl flex flex-col justify-between space-y-3 shadow-md hover:scale-[1.02] transition leading-tight">
+                      <div className="flex items-center gap-2">
+                        <div className="w-[32px] h-[32px] rounded-lg bg-zinc-800 text-zinc-350 flex items-center justify-center shrink-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-hourglass"><path d="M5 2h14"/><path d="M5 22h14"/><path d="M19 2v4c0 3.3-3 6-7 6s-7-2.7-7-6V2"/><path d="M12 12c-4 0-7 2.7-7 6v4h14v-4c0-3.3-3-6-7-6z"/></svg>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block truncate">
+                            Saldo em Aberto
+                          </p>
+                          <h4 className="text-xs font-black text-white font-sans mt-0.5 truncate">
+                            {formatCurrency(clients.reduce((acc, c) => acc + Math.max(0, c.totalValue - c.paidValue), 0))}
+                          </h4>
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-bold text-amber-400 bg-amber-900/20 px-2 py-0.5 rounded-md self-start border border-amber-500/10">
+                        Previsão
+                      </span>
+                    </div>
+
+                    {/* Card 4: Taxa de Conclusão */}
+                    <div className="p-3 bg-zinc-900 border border-zinc-800/80 rounded-2xl flex flex-col justify-between space-y-3 shadow-md hover:scale-[1.02] transition leading-tight">
+                      <div className="flex items-center gap-2">
+                        <div className="w-[32px] h-[32px] rounded-lg bg-zinc-800 text-zinc-350 flex items-center justify-center shrink-0">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-clapperboard"><path d="M20.2 6 3 11l-.9-2.4 17.2-5.1Z"/><path d="M4 11h16a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z"/><path d="M12 11v11"/><path d="M3 17h18"/></svg>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block truncate">
+                            Taxa de Entrega
+                          </p>
+                          <h4 className="text-sm font-black text-white font-sans mt-0.5">
+                            {clients.length > 0 
+                              ? `${Math.round((clients.filter(c => c.progress === 'entregue').length / clients.length) * 100)}%`
+                              : '0%'}
+                          </h4>
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-bold text-blue-400 bg-blue-900/20 px-2 py-0.5 rounded-md self-start border border-blue-500/10">
+                        Meta
+                      </span>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* VIEW 2: CLIENT CARDS / PROJECTS LIST */}
+            {currentSection === 'clients' && (
+              <div className="space-y-5 animate-fade-in" id="mobile-clients-viewport">
+                <div>
+                  <h2 className="text-sm font-black text-white uppercase tracking-wider font-sans">
+                    Clientes &amp; Contratos
+                  </h2>
+                  <p className="text-[10px] text-zinc-400 mt-0.5 font-sans">
+                    Gerencie faturas de ensaios, links do WhatsApp e prazos de entregas.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setClientToEdit(null);
+                    setIsClientFormOpen(!isClientFormOpen);
+                  }}
+                  className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-800 hover:border-zinc-700 text-xs font-black rounded-xl transition flex items-center justify-center gap-1.5 font-sans cursor-pointer shadow-sm uppercase tracking-wider"
+                  type="button"
+                >
+                  <span>{isClientFormOpen ? '✕ Fechar Prancheta' : '➕ Novo Contrato / Cadastro'}</span>
+                </button>
+
+                {(isClientFormOpen || clientToEdit) && (
+                  <div className="pt-1 animate-fade-in">
+                    <ClientForm 
+                      clientToEdit={clientToEdit}
+                      onSubmit={handleSaveClient}
+                      onCancel={() => {
+                        setIsClientFormOpen(false);
+                        setClientToEdit(null);
+                      }}
+                    />
+                  </div>
+                )}
+
+                <ClientList 
+                  clients={clients}
+                  appointments={appointments}
+                  activeTab={activeClientsTab}
+                  onActiveTabChange={setActiveClientsTab}
+                  onEditClient={(client) => {
+                    setClientToEdit(client);
+                    setIsClientFormOpen(true);
+                    showToast(`Editando dados de "${client.name}"`, 'info');
+                  }}
+                  onDeleteClient={handleDeleteClient}
+                  onUpdateProgress={handleUpdateProgress}
+                />
+              </div>
+            )}
+
+            {/* VIEW 3: SYSTEM CALENDAR */}
+            {currentSection === 'calendar' && (
+              <div className="space-y-5 animate-fade-in" id="mobile-calendar-viewport">
+                <div>
+                  <h2 className="text-sm font-black text-white uppercase tracking-wider font-sans">
+                    Calendário de Produção
+                  </h2>
+                  <p className="text-[10px] text-zinc-400 mt-0.5 font-sans">
+                    Toque em dias livres para travar bloqueios de ensaios fotográficos.
+                  </p>
+                </div>
+
+                <VisualCalendar 
+                  clients={clients}
+                  appointments={appointments}
+                  onAddAppointment={handleAddAppointment}
+                  onDeleteAppointment={handleDeleteAppointment}
+                />
+              </div>
+            )}
+
+            {/* VIEW 4: SYSTEM ANALYTICS VIEW */}
+            {currentSection === 'analytics' && (
+              <div className="pt-1 animate-fade-in">
+                <AnalyticsView 
+                  clients={clients}
+                  appointments={appointments}
+                />
+              </div>
+            )}
+
+          </div>
+        </div>
+
+        {/* POPUP: DETAILED HIGH-FIDELITY PROJECT INFO DRAWER FROM MOCKUP HOME ACTION */}
+        {selectedMockProject && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"
+            onClick={() => setSelectedMockProject(null)}
+          >
+            <div 
+              className="relative w-full max-w-sm bg-[#121215] rounded-[32px] p-6 border border-zinc-800 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-full h-36 rounded-2xl overflow-hidden relative border border-zinc-800">
+                <img 
+                  src={selectedMockProject.image} 
+                  alt="Current preview theme" 
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  onClick={() => setSelectedMockProject(null)}
+                  className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center bg-black/80 hover:bg-black text-white text-xs rounded-full border-none cursor-pointer"
+                >
+                  ✕
+                </button>
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black to-transparent p-3 text-white">
+                  <span className="text-[8px] bg-zinc-800 text-white font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
+                    {selectedMockProject.category}
+                  </span>
+                  <h4 className="text-sm font-black text-white font-sans mt-1">
+                    {selectedMockProject.title}
+                  </h4>
+                </div>
+              </div>
+
+              <div className="space-y-2.5 text-xs font-sans">
+                <div>
+                  <span className="text-[8px] font-extrabold text-zinc-400 block uppercase tracking-wider">TIPO DE SERVIÇO</span>
+                  <p className="text-white font-bold mt-0.5">
+                    {selectedMockProject.serviceType}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[8px] font-extrabold text-zinc-400 block uppercase tracking-wider">DESCRIÇÃO E RECURSOS</span>
+                  <p className="text-zinc-300 font-medium leading-relaxed mt-0.5">
+                    {selectedMockProject.details}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
+                  <div className="leading-tight">
+                    <span className="text-[8px] font-bold text-zinc-400 block uppercase tracking-wider">PROGRESSO</span>
+                    <span className="text-sm font-black text-white">{selectedMockProject.progress}%</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedMockProject(null);
+                      setCurrentSection('clients');
+                    }}
+                    className="px-4 py-2 bg-white hover:bg-zinc-100 text-black font-extrabold text-[10px] rounded-full border-none cursor-pointer shadow-md uppercase tracking-widest transition-transform hover:scale-105 active:scale-95"
+                  >
+                    Ver Contrato
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* POPUP: EDITABLE USER PROFILE MODAL */}
+        {showProfileModal && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"
+            onClick={() => setShowProfileModal(false)}
+          >
+            <div 
+              className="relative w-full max-w-sm bg-[#121215] rounded-[32px] p-6 border border-zinc-800 shadow-2xl space-y-4 max-h-[90vh] flex flex-col justify-between"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b pb-3 border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">👩‍🎨</span>
+                  <div>
+                    <h4 className="text-sm font-black text-white font-sans uppercase tracking-wider">
+                      Seu Perfil Profissional
+                    </h4>
+                    <p className="text-[9px] text-zinc-400 font-sans">
+                      Ajuste seu nome e foto artística
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowProfileModal(false)}
+                  className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-full border-none cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-xs font-sans">
+                {/* Visual Preview */}
+                <div className="flex flex-col items-center justify-center py-4 bg-zinc-950 rounded-2xl border border-zinc-800/80">
+                  <div className="relative bg-[#121215] p-1 rounded-full">
+                    <div className="w-16 h-16 rounded-full overflow-hidden border border-zinc-700 relative flex items-center justify-center text-white font-bold shadow-sm">
+                      {profile.avatarUrl ? (
+                        <img 
+                          src={profile.avatarUrl} 
+                          alt={profile.name} 
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className={`w-full h-full bg-gradient-to-tr ${profile.avatarColor} flex items-center justify-center text-3xl font-sans`}>
+                          {profile.avatarEmoji}
+                        </div>
+                      )}
+                    </div>
+                    <span className="absolute -bottom-1 -left-1 bg-black border border-zinc-700 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-sm select-none">
+                      🎥
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-white text-sm mt-2">
+                    {profile.name}
+                  </h3>
+                </div>
+
+                {/* Input Name */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 block uppercase tracking-wider">
+                    Nome / Marca Cinematográfica
+                  </label>
+                  <input
+                    type="text"
+                    value={profile.name}
+                    onChange={(e) => {
+                      const updated = { ...profile, name: e.target.value };
+                      setProfile(updated);
+                    }}
+                    placeholder="Digite seu nome..."
+                    className="w-full p-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-white text-xs focus:border-zinc-500 outline-none"
+                  />
+                </div>
+
+                {/* Input Profile Picture via File Upload */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 block uppercase tracking-wider">
+                    Foto de Perfil
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="file"
+                      id="profile-file-uploader"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 2 * 1024 * 1024) {
+                            showToast('Selecione uma imagem menor que 2MB.', 'error');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            const base64String = reader.result as string;
+                            setProfile((prev) => ({ ...prev, avatarUrl: base64String }));
+                            showToast('Foto carregada! Clique em Salvar Alterações para confirmar.', 'info');
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('profile-file-uploader')?.click()}
+                      className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                      {profile.avatarUrl ? 'Alterar Foto' : 'Carregar Foto'}
+                    </button>
+                    {profile.avatarUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfile((prev) => ({ ...prev, avatarUrl: '' }));
+                          showToast('Foto de perfil removida!', 'info');
+                        }}
+                        className="px-3 py-2 bg-red-950/30 hover:bg-red-900/30 border border-red-900/30 text-red-400 rounded-xl text-[10px] font-bold uppercase tracking-wider transition cursor-pointer"
+                      >
+                        Excluir
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[8px] text-zinc-500">
+                    Importe uma foto. Se deixar sem foto de perfil, a logo predefinida abaixo será usada.
+                  </p>
+                </div>
+
+                {!profile.avatarUrl && (
+                  <>
+                    {/* Emoji Select Grid */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 block uppercase tracking-wider">
+                        Escolha o Ícone Predefinido
+                      </label>
+                      <div className="grid grid-cols-5 gap-2">
+                        {['🎥', '👩‍🎨', '📷', '🎬', '🎨', '🚀', '⭐', '✨', '👑', '💼'].map((emo) => (
+                          <button
+                            key={emo}
+                            type="button"
+                            onClick={() => {
+                              const updated = { ...profile, avatarEmoji: emo };
+                              setProfile(updated);
+                            }}
+                            className={`p-1.5 text-lg rounded-xl border transition ${profile.avatarEmoji === emo ? 'bg-zinc-800 border-zinc-600 scale-105' : 'bg-zinc-950 border-zinc-800 hover:bg-zinc-900 text-white'}`}
+                          >
+                            {emo}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Gradient Background circles */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 block uppercase tracking-wider">
+                        Escolha a Cor de Fundo
+                      </label>
+                      <div className="flex items-center gap-2">
+                        {[
+                          { name: 'from-zinc-805 to-black', color: 'bg-gradient-to-tr from-zinc-800 to-black' },
+                          { name: 'from-neutral-700 to-neutral-900', color: 'bg-gradient-to-tr from-neutral-700 to-neutral-900' },
+                          { name: 'from-stone-700 to-zinc-900', color: 'bg-gradient-to-tr from-stone-700 to-zinc-900' },
+                          { name: 'from-emerald-900 to-teal-950', color: 'bg-gradient-to-tr from-emerald-900 to-teal-950' },
+                          { name: 'from-cyan-900 to-blue-950', color: 'bg-gradient-to-tr from-cyan-905 to-blue-950' },
+                          { name: 'from-amber-800 to-orange-950', color: 'bg-gradient-to-tr from-amber-800 to-orange-950' }
+                        ].map((grad) => (
+                          <button
+                            key={grad.name}
+                            type="button"
+                            title={grad.name}
+                            onClick={() => {
+                              const updated = { ...profile, avatarColor: grad.name };
+                              setProfile(updated);
+                            }}
+                            className={`w-7 h-7 rounded-full ${grad.color} border-2 transition ${profile.avatarColor === grad.name ? 'border-white scale-110 shadow-md' : 'border-transparent ring-1 ring-zinc-800'}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <button
+                onClick={async () => {
+                  try {
+                    saveUserProfileToStorage(profile);
+                    if (sessionUser || supabaseConnected) {
+                      const success = await saveUserProfileToSupabase(profile);
+                      if (!success) {
+                        console.warn('Não foi possível sincronizar o perfil com o Supabase, salvo localmente.');
+                      }
+                    }
+                    showToast('Perfil profissional salvo com sucesso! ✨', 'success');
+                    setShowProfileModal(false);
+                  } catch (e) {
+                    showToast('Ocorreu um erro ao salvar o perfil.', 'error');
+                  }
+                }}
+                className="w-full py-2.5 bg-white hover:bg-zinc-100 text-black font-extrabold text-xs rounded-2xl border-none cursor-pointer shadow-md mt-2 uppercase tracking-widest"
+              >
+                Salvar Alterações
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* HAMBURGER SIDEBAR MENU DRAWER */}
+        {showMenuDrawer && (
+          <div 
+            className="fixed inset-0 z-50 flex justify-start bg-black/80 backdrop-blur-sm animate-fade-in"
+            onClick={() => setShowMenuDrawer(false)}
+          >
+            <div 
+              className="w-[280px] h-full bg-[#121215] border-r border-zinc-800 p-6 flex flex-col justify-between shadow-2xl relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drawer Close Button */}
+              <button 
+                onClick={() => setShowMenuDrawer(false)}
+                className="absolute top-5 right-5 w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full border-none cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <div className="space-y-6">
+                {/* Brand Header */}
+                <div className="select-none flex items-center gap-2 border-b border-zinc-800 pb-4 mt-2">
+                  <span className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center font-bold text-sm">✦</span>
+                  <div>
+                    <h2 className="text-xl font-serif font-bold tracking-[0.1em] text-white">CREATIVE</h2>
+                    <p className="text-[8px] tracking-wider text-zinc-500 font-sans font-bold uppercase">Produtividade Automática</p>
+                  </div>
+                </div>
+
+                {/* Profile Widget */}
+                <div 
+                  onClick={() => {
+                    setShowMenuDrawer(false);
+                    setShowProfileModal(true);
+                  }}
+                  className="p-3 bg-zinc-950 hover:bg-zinc-900 rounded-2xl border border-zinc-850 flex items-center gap-3 transition cursor-pointer"
+                >
+                  <div className="w-[42px] h-[42px] rounded-full overflow-hidden border border-zinc-800 flex items-center justify-center text-white bg-zinc-900 relative">
+                    {profile.avatarUrl ? (
+                      <img 
+                        src={profile.avatarUrl} 
+                        alt={profile.name} 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className={`w-full h-full bg-gradient-to-tr ${profile.avatarColor || 'from-zinc-800 to-black'} flex items-center justify-center text-sm`}>
+                        {profile.avatarEmoji || '🎥'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold text-white truncate uppercase font-sans">{profile.name || 'Karol Gonçalo'}</p>
+                    <p className="text-[8px] text-zinc-500 font-semibold font-sans uppercase">Ajustar Perfil</p>
+                  </div>
+                </div>
+
+                {/* Quick Navigation Links */}
+                <nav className="space-y-1.5 font-sans text-xs">
+                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-2">Painel de Acesso</p>
+                  
+                  <button
+                    onClick={() => {
+                      setCurrentSection('dashboard');
+                      setShowMenuDrawer(false);
+                    }}
+                    className={`w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer ${currentSection === 'dashboard' ? 'bg-zinc-805 bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-home"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    <span>Início</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCurrentSection('clients');
+                      setShowMenuDrawer(false);
+                    }}
+                    className={`w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer ${currentSection === 'clients' ? 'bg-zinc-805 bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-folder-closed"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M2 10h20"/></svg>
+                    <span>Projetos & Contratos</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCurrentSection('calendar');
+                      setShowMenuDrawer(false);
+                    }}
+                    className={`w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer ${currentSection === 'calendar' ? 'bg-zinc-805 bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-calendar"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                    <span>Agenda</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setCurrentSection('analytics');
+                      setShowMenuDrawer(false);
+                    }}
+                    className={`w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer ${currentSection === 'analytics' ? 'bg-zinc-805 bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/60'}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-bar-chart-2"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+                    <span>Métricas</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowNotesModal(true);
+                      setShowMenuDrawer(false);
+                    }}
+                    className="w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer text-zinc-400 hover:text-white hover:bg-zinc-900/60"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    <span>Bloco de Notas</span>
+                  </button>
+
+                  <div className="h-px bg-zinc-850 my-2" />
+
+                  {sessionUser ? (
+                    <button
+                      onClick={() => {
+                        setShowMenuDrawer(false);
+                        handleSignOut();
+                      }}
+                      className="w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer text-[#EF4444] hover:bg-[#EF4444]/10"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-log-out"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                      <span>Sair do Studio</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setShowMenuDrawer(false);
+                        localStorage.removeItem('creative_bypass_offline');
+                        setBypassOffline(false);
+                      }}
+                      className="w-full text-left p-3 rounded-xl font-black uppercase tracking-wider flex items-center gap-3 transition cursor-pointer text-emerald-400 hover:bg-emerald-400/10"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-log-in"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></svg>
+                      <span>Entrar na Nuvem</span>
+                    </button>
+                  )}
+                </nav>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* POPUP: NOTES MODAL (BLOCO DE NOTAS) */}
+        {showNotesModal && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            onClick={() => {
+              setShowNotesModal(false);
+              setActiveNote(null);
+            }}
+          >
+            <div 
+              className="relative w-full max-w-sm bg-[#121215] rounded-[32px] p-6 border border-zinc-800 shadow-2xl space-y-4 max-h-[95vh] flex flex-col justify-between animate-scale-up text-left"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b pb-3 border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📝</span>
+                  <div>
+                    <h4 className="text-sm font-black text-white font-sans uppercase tracking-wider">
+                      {activeNote ? 'Editar Nota' : 'Bloco de Notas'}
+                    </h4>
+                    <p className="text-[9px] text-zinc-400 font-sans">
+                      {activeNote ? 'Editando seus rascunhos' : 'Anotações de Roteiros, Ideias e Insights'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowNotesModal(false);
+                    setActiveNote(null);
+                  }}
+                  className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-full border-none cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {!activeNote ? (
+                /* VIEW 1: NOTE LIST */
+                <div className="flex-1 overflow-y-auto space-y-3 font-sans max-h-[60vh] pr-1">
+                  {/* Plus button to add note */}
+                  <button
+                    onClick={() => {
+                      const newN: Note = {
+                        id: 'note_' + Date.now(),
+                        content: '',
+                        updatedAt: new Date().toISOString()
+                      };
+                      setActiveNote(newN);
+                    }}
+                    className="w-full py-3 bg-white hover:bg-zinc-100 text-black font-extrabold text-xs rounded-xl cursor-pointer shadow-md uppercase tracking-wider flex items-center justify-center gap-2"
+                  >
+                    <span>✦</span> Nova Nota
+                  </button>
+
+                  {notes.length === 0 ? (
+                    <div className="text-center py-8 text-zinc-500">
+                      <p className="text-xs">Nenhuma nota cadastrada.</p>
+                      <p className="text-[10px] mt-1">Clique em "Nova Nota" para começar!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 mt-2">
+                      {notes.map((note) => {
+                        const preview = note.content.trim() 
+                          ? note.content.substring(0, 60) + (note.content.length > 60 ? '...' : '') 
+                          : '(Sem conteúdo)';
+                        const formattedDate = note.updatedAt 
+                          ? new Date(note.updatedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' às ' + new Date(note.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                          : '';
+
+                        return (
+                          <div 
+                            key={note.id}
+                            className="p-3 bg-zinc-950 border border-zinc-850 hover:border-zinc-700 rounded-2xl flex items-start justify-between gap-3 group transition"
+                          >
+                            <div 
+                              onClick={() => {
+                                setActiveNote({ ...note });
+                              }}
+                              className="flex-1 cursor-pointer min-w-0"
+                            >
+                              <p className="text-xs font-medium text-white break-words whitespace-pre-wrap leading-tight">
+                                {preview}
+                              </p>
+                              {formattedDate && (
+                                <span className="text-[8px] text-zinc-500 block mt-1">
+                                  {formattedDate}
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {deletingNoteId === note.id ? (
+                                <div className="flex items-center gap-1 bg-rose-950/20 border border-rose-900/30 p-1 px-2 rounded-xl animate-fade-in text-[9px] font-bold">
+                                  <span className="text-rose-400 mr-1 uppercase text-[8px]">Apagar?</span>
+                                  <button
+                                    onClick={async () => {
+                                      const updated = notes.filter(n => n.id !== note.id);
+                                      setNotes(updated);
+                                      saveNotesToStorage(updated);
+                                      if (supabaseConnected && note.id) {
+                                        await deleteNoteFromSupabase(note.id);
+                                      }
+                                      showToast('Nota removida com sucesso! 🗑️', 'success');
+                                      setDeletingNoteId(null);
+                                    }}
+                                    className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded font-black text-[9px] uppercase border-none cursor-pointer transition active:scale-95"
+                                  >
+                                    Sim
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingNoteId(null)}
+                                    className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded font-black text-[9px] uppercase border-none cursor-pointer transition"
+                                  >
+                                    Não
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setActiveNote({ ...note });
+                                    }}
+                                    className="p-1.5 text-zinc-400 hover:text-white transition rounded-lg hover:bg-zinc-800"
+                                    title="Editar"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingNoteId(note.id || null)}
+                                    className="p-1.5 text-rose-400 hover:text-rose-300 transition rounded-lg hover:bg-rose-950/30"
+                                    title="Apagar"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* VIEW 2: NOTE WRITER EDITOR */
+                <div className="flex-1 overflow-y-auto space-y-3 font-sans relative flex flex-col justify-between">
+                  <textarea
+                    id="notes-modal-textarea"
+                    value={activeNote.content}
+                    onChange={(e) => setActiveNote({ ...activeNote, content: e.target.value })}
+                    placeholder={`Digite suas ideias de roteiros, poses ou lembretes...`}
+                    className="w-full h-80 p-3 bg-zinc-950 border border-zinc-850 rounded-2xl text-white placeholder-zinc-650 text-xs font-medium focus:border-zinc-500 outline-none leading-relaxed resize-none font-sans"
+                    style={{
+                      backgroundImage: 'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px)',
+                      backgroundSize: '100% 24px',
+                      lineHeight: '24px'
+                    }}
+                  />
+                  
+                  <div className="text-[9px] text-zinc-500 font-sans flex items-center justify-between px-1">
+                    {activeNote.updatedAt && (
+                      <span>Alterada em: {new Date(activeNote.updatedAt).toLocaleDateString('pt-BR')} às {new Date(activeNote.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setActiveNote(null)}
+                      className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white font-extrabold text-xs rounded-xl border border-zinc-800 cursor-pointer uppercase tracking-wider text-center"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!activeNote.content.trim()) {
+                          showToast('Digite algum conteúdo antes de salvar!', 'error');
+                          return;
+                        }
+                        const finalUpdatedNote: Note = {
+                          ...activeNote,
+                          updatedAt: new Date().toISOString()
+                        };
+                        
+                        try {
+                          const updatedList = notes.some(n => n.id === finalUpdatedNote.id)
+                            ? notes.map(n => n.id === finalUpdatedNote.id ? finalUpdatedNote : n)
+                            : [finalUpdatedNote, ...notes];
+                          
+                          setNotes(updatedList);
+                          saveNotesToStorage(updatedList);
+                          
+                          if (supabaseConnected) {
+                            await saveNoteToSupabase(finalUpdatedNote);
+                          }
+                          showToast('Nota salva com sucesso! ✨', 'success');
+                          setActiveNote(null);
+                        } catch (err) {
+                          console.error('Erro ao salvar nota:', err);
+                          showToast('Nota salva temporariamente no navegador!', 'info');
+                          setActiveNote(null);
+                        }
+                      }}
+                      className="flex-1 py-2.5 bg-white hover:bg-zinc-100 text-black font-extrabold text-xs rounded-xl cursor-pointer shadow-md uppercase tracking-wider text-center"
+                    >
+                      Salvar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Just render direct buttons for list view cancel */}
+              {!activeNote && (
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setShowNotesModal(false);
+                      setActiveNote(null);
+                    }}
+                    className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white font-extrabold text-xs rounded-xl border border-zinc-800 cursor-pointer uppercase tracking-wider"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* BOTTOM FLOATING TABS BAR DECK (Exactly styled as pictured) */}
+        <nav 
+          className="absolute bottom-0 inset-x-0 bg-black border-t border-zinc-900 py-2 flex items-center justify-between z-40 px-5 rounded-none sm:rounded-b-[40px] font-sans h-16 hover:border-zinc-800 transition" 
+          id="mobile-tab-deck"
+          style={{ contentVisibility: 'auto' }}
+        >
+          {/* TAB 1: Home dashboard */}
+          <button
+            onClick={() => {
+              setCurrentSection('dashboard');
+              setClientToEdit(null);
+              setIsClientFormOpen(false);
+            }}
+            className="flex flex-col items-center gap-1.5 bg-transparent border-none outline-none cursor-pointer flex-1 py-1"
+            type="button"
+          >
+            <span className={`transition ${currentSection === 'dashboard' ? 'scale-105 text-white font-bold' : 'text-zinc-500 opacity-60'}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-home"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </span>
+            <span className={`text-[8px] font-black uppercase tracking-wider ${currentSection === 'dashboard' ? 'text-white' : 'text-zinc-500'}`}>
+              Início
+            </span>
+          </button>
+
+          {/* TAB 2: Clients list */}
+          <button
+            onClick={() => {
+              setCurrentSection('clients');
+              setClientToEdit(null);
+              setIsClientFormOpen(false);
+            }}
+            className="flex flex-col items-center gap-1.5 bg-transparent border-none outline-none cursor-pointer flex-1 py-1"
+            type="button"
+          >
+            <span className={`transition ${currentSection === 'clients' ? 'scale-105 text-white font-bold' : 'text-zinc-500 opacity-60'}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-folder-closed"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M2 10h20"/></svg>
+            </span>
+            <span className={`text-[8px] font-black uppercase tracking-wider ${currentSection === 'clients' ? 'text-white' : 'text-zinc-500'}`}>
+              Projetos
+            </span>
+          </button>
+
+          {/* TAB 3: Overlap Center float + custom plus registration button */}
+          <div className="flex-1 flex items-center justify-center relative h-full" id="tabbar-plus-button-container">
+            <button
+              onClick={() => {
+                setCurrentSection('clients');
+                setClientToEdit(null);
+                setIsClientFormOpen(true);
+                showToast('Iniciando registro de trabalho...', 'info');
+              }}
+              className="absolute -top-4 w-12 h-12 rounded-full bg-white text-black flex items-center justify-center font-bold text-2xl transition hover:scale-110 active:scale-95 shadow-lg border-4 border-[#0A0A0C] z-50 cursor-pointer select-none"
+              title="Novo Projeto"
+              type="button"
+            >
+              +
+            </button>
+          </div>
+
+          {/* TAB 4: Calendar view */}
+          <button
+            onClick={() => {
+              setCurrentSection('calendar');
+              setClientToEdit(null);
+              setIsClientFormOpen(false);
+            }}
+            className="flex flex-col items-center gap-1.5 bg-transparent border-none outline-none cursor-pointer flex-1 py-1"
+            type="button"
+          >
+            <span className={`transition ${currentSection === 'calendar' ? 'scale-105 text-white font-bold' : 'text-zinc-500 opacity-60'}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-calendar"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+            </span>
+            <span className={`text-[8px] font-black uppercase tracking-wider ${currentSection === 'calendar' ? 'text-white' : 'text-zinc-500'}`}>
+              Agenda
+            </span>
+          </button>
+
+          {/* TAB 5: Analytics & Growth view */}
+          <button
+            onClick={() => {
+              setCurrentSection('analytics');
+              setClientToEdit(null);
+              setIsClientFormOpen(false);
+            }}
+            className="flex flex-col items-center gap-1.5 bg-transparent border-none outline-none cursor-pointer flex-1 py-1"
+            type="button"
+          >
+            <span className={`transition ${currentSection === 'analytics' ? 'scale-105 text-white font-bold' : 'text-zinc-500 opacity-60'}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-bar-chart-2"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+            </span>
+            <span className={`text-[8px] font-black uppercase tracking-wider ${currentSection === 'analytics' ? 'text-white' : 'text-zinc-500'}`}>
+              Métricas
+            </span>
+          </button>
+        </nav>
+      </div>
+
+    </div>
+  );
+}
