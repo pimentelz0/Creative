@@ -54,7 +54,7 @@ const formatCurrency = (val: number) => {
 };
 
 const DEFAULT_PROFILE: UserProfile = {
-  name: 'Karol Gonçalo',
+  name: 'Criativo',
   avatarUrl: '',
   avatarEmoji: '🎥',
   avatarColor: 'from-zinc-800 to-black'
@@ -138,7 +138,16 @@ export default function App() {
     const loadedAppointments = getAppointmentsFromStorage(INITIAL_APPOINTMENTS);
     const loadedNote = getQuickNoteFromStorage(INITIAL_NOTE);
     const loadedNotes = getNotesFromStorage([INITIAL_NOTE]);
-    const loadedProfile = getUserProfileFromStorage(DEFAULT_PROFILE);
+    let loadedProfile = getUserProfileFromStorage(DEFAULT_PROFILE);
+
+    // If loaded profile is using the old template default 'Karol Gonçalo', clean it up to say 'Criativo'
+    if (loadedProfile && loadedProfile.name === 'Karol Gonçalo') {
+      loadedProfile = {
+        ...loadedProfile,
+        name: 'Criativo'
+      };
+      saveUserProfileToStorage(loadedProfile);
+    }
 
     setClients(loadedClients);
     setAppointments(loadedAppointments);
@@ -165,24 +174,72 @@ export default function App() {
           const cloudNotes = await fetchNotesFromSupabase();
           const cloudProfile = await fetchUserProfileFromSupabase();
 
-          if (cloudClients !== null && cloudClients.length > 0) {
+          if (cloudClients !== null) {
             setClients(cloudClients);
             saveClientsToStorage(cloudClients);
           }
-          if (cloudAppts !== null && cloudAppts.length > 0) {
+          if (cloudAppts !== null) {
             setAppointments(cloudAppts);
             saveAppointmentsToStorage(cloudAppts);
           }
           if (cloudNote !== null) {
             setQuickNote(cloudNote);
+            saveQuickNoteToStorage(cloudNote);
+          } else {
+            const emptyNote = { id: 'quick_note', content: '', updatedAt: '' };
+            setQuickNote(emptyNote);
+            saveQuickNoteToStorage(emptyNote);
           }
-          if (cloudNotes !== null && cloudNotes.length > 0) {
+          if (cloudNotes !== null) {
             setNotes(cloudNotes);
             saveNotesToStorage(cloudNotes);
           }
-          if (cloudProfile !== null) {
-            setProfile(cloudProfile);
-            saveUserProfileToStorage(cloudProfile);
+
+          // Dynamic Profile Sync & Legacy Fallback Self-Repair Mechanics for Google/Social log-in
+          let resolvedProfile = cloudProfile;
+          const oauthName = sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.name;
+          const oauthPicture = sessionUser.user_metadata?.avatar_url || sessionUser.user_metadata?.picture || '';
+
+          if (resolvedProfile === null) {
+            // New user signed up, build an initial profile based on their Google OAuth details
+            let initialName = '';
+            if (oauthName) {
+              initialName = oauthName;
+            } else if (sessionUser.email) {
+              const emailPrefix = sessionUser.email.split('@')[0];
+              initialName = emailPrefix
+                .split(/[._\-+]/)
+                .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+            } else {
+              initialName = 'Criativo';
+            }
+
+            resolvedProfile = {
+              name: initialName,
+              avatarUrl: oauthPicture,
+              avatarEmoji: '🎥',
+              avatarColor: 'from-zinc-800 to-black'
+            };
+
+            setProfile(resolvedProfile);
+            saveUserProfileToStorage(resolvedProfile);
+            await saveUserProfileToSupabase(resolvedProfile);
+          } else if (resolvedProfile.name === 'Karol Gonçalo' && oauthName) {
+            // Self-repair: they had a profile, but with the default hardcoded template name 'Karol Gonçalo'
+            // Migrate them automatically to their Google name to prevent confusion!
+            const updatedProfile = {
+              ...resolvedProfile,
+              name: oauthName,
+              avatarUrl: resolvedProfile.avatarUrl || oauthPicture
+            };
+            setProfile(updatedProfile);
+            saveUserProfileToStorage(updatedProfile);
+            await saveUserProfileToSupabase(updatedProfile);
+          } else {
+            // Standard loaded profile from the cloud
+            setProfile(resolvedProfile);
+            saveUserProfileToStorage(resolvedProfile);
           }
         }
       } catch (err) {
@@ -199,6 +256,11 @@ export default function App() {
     try {
       await supabase.auth.signOut();
       localStorage.removeItem('creative_bypass_offline');
+      localStorage.removeItem('cliboard_clients');
+      localStorage.removeItem('cliboard_appointments');
+      localStorage.removeItem('cliboard_quick_note');
+      localStorage.removeItem('cliboard_notes_list');
+      localStorage.removeItem('cliboard_user_profile');
       setBypassOffline(false);
       setSessionUser(null);
       showToast('Sessão encerrada com sucesso! Volte sempre! 👋', 'success');
@@ -1172,7 +1234,7 @@ export default function App() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-bold text-white truncate uppercase font-sans">{profile.name || 'Karol Gonçalo'}</p>
+                    <p className="text-[10px] font-bold text-white truncate uppercase font-sans">{profile.name || 'Criativo'}</p>
                     <p className="text-[8px] text-zinc-500 font-semibold font-sans uppercase">Ajustar Perfil</p>
                   </div>
                 </div>
