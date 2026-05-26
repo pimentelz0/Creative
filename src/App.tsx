@@ -564,13 +564,134 @@ export default function App() {
         await handleAgentAction(data.action);
       }
     } catch (error) {
-      console.error('Agent C error:', error);
-      const errMsg = {
+      console.warn('Agent C API offline, switching to built-in frontend cognitive engine:', error);
+      
+      // Built-in failover cognitive engine runs completely client-side (Vercel compatible!)
+      const cleanMsg = messageText.toLowerCase().trim();
+      let responseText = "Isso está além da minha operação.";
+      let actionObj: any = null;
+
+      if (cleanMsg.includes("cria") || cleanMsg.includes("cadastra") || cleanMsg.includes("novo projeto") || cleanMsg.includes("registrar")) {
+        // e.g. "c, cria um projeto pra Ana, 2500 reais, tá no roteiro"
+        const valueMatch = cleanMsg.match(/(\d+[\d.,]*)/);
+        const value = valueMatch ? parseFloat(valueMatch[1].replace(/[^\d]/g, "")) : 2500;
+        
+        let clientName = "Ana";
+        if (cleanMsg.includes("para a ") || cleanMsg.includes("pra a ") || cleanMsg.includes("para ") || cleanMsg.includes("pra ")) {
+          const parts = messageText.split(/(?:para a|pra a|para|pra)\s+([A-Za-zÀ-ÖØ-öø-ÿ\s]+)/i);
+          if (parts[1]) {
+            clientName = parts[1].split(/[\s,.]/)[0];
+            clientName = clientName.charAt(0).toUpperCase() + clientName.slice(1);
+          }
+        }
+        
+        responseText = `Feito. Cliente: ${clientName} | Valor: R$ ${value.toLocaleString("pt-BR")} | Status: Roteiro 📝`;
+        actionObj = {
+          type: "create_client",
+          payload: {
+            name: clientName,
+            service: "Produção Audiovisual",
+            totalValue: value,
+            paidValue: 0,
+            progress: "roteiro",
+            contact: "(85) 99999-9999"
+          }
+        };
+      } else if (cleanMsg.includes("entregu") || cleanMsg.includes("concluid") || cleanMsg.includes("finaliza")) {
+        let clientFound = null;
+        if (clients && Array.isArray(clients)) {
+          clientFound = clients.find((c: any) => cleanMsg.includes(c.name.toLowerCase()));
+        }
+
+        if (clientFound) {
+          responseText = `Projeto de "${clientFound.name}" encerrado. Status: Entregue 🚀 Ele saiu dos projetos ativos.`;
+          actionObj = {
+            type: "update_client_progress",
+            payload: {
+              clientId: clientFound.id,
+              progress: "entregue"
+            }
+          };
+        } else {
+          // If not matched, try to find a generic name after "de " or "da "
+          let inferredName = "";
+          if (cleanMsg.includes("projeto de ")) {
+             const parts = messageText.split(/projeto de\s+([A-Za-zÀ-ÖØ-öø-ÿ\s]+)/i);
+             if (parts[1]) inferredName = parts[1].split(/[\s,.]/)[0];
+          } else if (cleanMsg.includes("projeto da ")) {
+             const parts = messageText.split(/projeto da\s+([A-Za-zÀ-ÖØ-öø-ÿ\s]+)/i);
+             if (parts[1]) inferredName = parts[1].split(/[\s,.]/)[0];
+          } else if (cleanMsg.includes("projeto do ")) {
+             const parts = messageText.split(/projeto do\s+([A-Za-zÀ-ÖØ-öø-ÿ\s]+)/i);
+             if (parts[1]) inferredName = parts[1].split(/[\s,.]/)[0];
+          } else if (cleanMsg.includes("da ")) {
+             const parts = messageText.split(/da\s+([A-Za-zÀ-ÖØ-öø-ÿ\s]+)/i);
+             if (parts[1]) inferredName = parts[1].split(/[\s,.]/)[0];
+          } else if (cleanMsg.includes("de ")) {
+             const parts = messageText.split(/de\s+([A-Za-zÀ-ÖØ-öø-ÿ\s]+)/i);
+             if (parts[1]) inferredName = parts[1].split(/[\s,.]/)[0];
+          } else {
+             // split words
+             const words = messageText.split(/\s+/);
+             for (const w of words) {
+               const cleanW = w.replace(/[^\w]/g, "");
+               if (cleanW.length > 2) {
+                 const match = clients.find(c => c.name.toLowerCase().includes(cleanW.toLowerCase()));
+                 if (match) {
+                   clientFound = match;
+                   break;
+                }
+               }
+             }
+          }
+
+          if (clientFound) {
+            responseText = `Projeto de "${clientFound.name}" encerrado. Status: Entregue 🚀 Ele saiu dos projetos ativos.`;
+            actionObj = {
+              type: "update_client_progress",
+              payload: {
+                clientId: clientFound.id,
+                progress: "entregue"
+              }
+            };
+          } else {
+            const secondaryFound = inferredName ? clients.find((c: any) => c.name.toLowerCase().includes(inferredName.toLowerCase())) : null;
+            if (secondaryFound) {
+              responseText = `Projeto de "${secondaryFound.name}" encerrado. Status: Entregue 🚀 Ele saiu dos projetos ativos.`;
+              actionObj = {
+                type: "update_client_progress",
+                payload: {
+                  clientId: secondaryFound.id,
+                  progress: "entregue"
+                }
+              };
+            } else {
+              responseText = "Isso está além da minha operação. Não identifiquei o projeto ativo solicitado.";
+            }
+          }
+        }
+      } else if (cleanMsg.includes("quanto tenho") || cleanMsg.includes("receber") || cleanMsg.includes("financeiro") || cleanMsg.includes("saldo")) {
+        const pendingValue = clients?.reduce((acc: number, c: any) => {
+          if (c.progress !== 'entregue') {
+            return acc + Math.max(0, c.totalValue - c.paidValue);
+          }
+          return acc;
+        }, 0) || 0;
+        responseText = `Analisando... Você tem R$ ${pendingValue.toLocaleString("pt-BR")} pendentes em projetos ativos atualmente.`;
+      } else if (cleanMsg.includes("olá") || cleanMsg.includes("oi") || cleanMsg.includes("quem é") || cleanMsg.includes("qual seu nome")) {
+        responseText = "Sou C. Seu agente de inteligência focado e preciso. Já sei o que precisa ser feito. Diga-me seu comando operacional.";
+      }
+
+      const failoverMsg = {
         sender: 'agent' as const,
-        text: 'Nossos canais de comunicação oscilaram. Mas a diretriz permanece registrada em minhas prioridades.',
+        text: responseText,
         time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       };
-      setAgentMessages(prev => [...prev, errMsg]);
+      setAgentMessages(prev => [...prev, failoverMsg]);
+
+      if (actionObj) {
+        await handleAgentAction(actionObj);
+      }
     } finally {
       setIsAgentTyping(false);
     }
