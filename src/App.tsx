@@ -564,8 +564,95 @@ export default function App() {
         await handleAgentAction(data.action);
       }
     } catch (error) {
-      console.warn('Agent C API offline, switching to built-in frontend cognitive engine:', error);
+      console.warn('Agent C API offline, checking for VITE_GEMINI_API_KEY for direct client-side Gemini call:', error);
       
+      const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+      if (viteKey && viteKey !== 'MY_GEMINI_API_KEY' && viteKey !== '') {
+        try {
+          const sysInstruction = `
+Você é "C", o agente de inteligência artificial confidencial e assistente operacional do sistema "Creative".
+Você é misterioso, estiloso, preciso, elegante, sofisticado, confiante e eficiente.
+Seu tom de voz é seco, elegante, sofisticado e confiante. Você fala com extremo profissionalismo, poucas palavras e frases impactantes. Nada de brincadeiras intelectuais baratas ou enrolação fútil.
+Você já sabe o que precisa ser feito ou o que o usuário quer antes de ele detalhar exaustivamente.
+
+Nesta sessão, você tem duas missões principais:
+1. Conversar com o usuário (tirar dúvidas, formular insights de fluxo do caixa comercial, resumir e orientar decisões).
+2. Agir no Creative automaticamente (criar projeto/cliente, redefinir fase, excluir contratos).
+
+Você deve retornar obrigatoriamente um objeto em JSON puro com a seguinte estrutura:
+{
+  "message": "Mensagem curta, enigmática, seca e refinada contendo sua resposta em português do Brasil.",
+  "action": {
+    "type": "create_client" | "update_client_progress" | "delete_client",
+    "payload": { ... }
+  }
+}
+
+Se o usuário focar apenas em perguntas, conversação, análises gerais ou feedback sem alteração cadastral iminente, omita ou configure "action": null.
+
+Aqui estão os dados analíticos do usuário no app Creative para sua referência lógica de IDs, nomes e status:
+- Projetos/Clientes Ativos atualmente: ${JSON.stringify(clients || [])}
+- Compromissos e Agenda: ${JSON.stringify(appointments || [])}
+- Dados de Perfil: ${JSON.stringify(profile || {})}
+
+Orientação das ações operacionais diretas no Creative:
+1. Cadastrar contrato/cliente novo:
+   - type: "create_client"
+   - payload: { name: string, service: string, totalValue: number, paidValue: number, progress: "roteiro" | "gravado" | "editado" | "entregue", contact: string }
+
+2. Atualizar etapa/fase do contrato:
+   - type: "update_client_progress"
+   - payload: { clientId: string, progress: "roteiro" | "gravado" | "editado" | "entregue" }
+   - IMPORTANTE: Descubra o clientId cruzando o nome do cliente que o usuário escreveu com a lista de Clientes Atuais fornecida.
+
+3. Excluir contrato:
+   - type: "delete_client"
+   - payload: { clientId: string }
+
+Se o usuário solicitar comandos bizarros ou alheios ao Creative, diga polidamente: "Isso está além da minha operação."
+Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de código (\`\`\`json).
+`;
+
+          const apiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${viteKey}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: messageText }] }],
+              systemInstruction: { parts: [{ text: sysInstruction }] },
+              generationConfig: {
+                responseMimeType: "application/json"
+              }
+            })
+          });
+
+          if (!apiResponse.ok) {
+            throw new Error(`Gemini client API returned HTTP ${apiResponse.status}`);
+          }
+
+          const apiData = await apiResponse.json();
+          const responseText = apiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+          const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+          const parsed = JSON.parse(cleaned);
+
+          const agentMsg = {
+            sender: 'agent' as const,
+            text: parsed.message || 'Diretriz processada e resolvida.',
+            time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          };
+          
+          setAgentMessages(prev => [...prev, agentMsg]);
+
+          if (parsed.action) {
+            await handleAgentAction(parsed.action);
+          }
+          return; // Skip local fallback as direct Gemini call succeeded!
+        } catch (clientGeminiErr) {
+          console.error("Direct browser Gemini call failed:", clientGeminiErr);
+        }
+      }
+
       // Built-in failover cognitive engine runs completely client-side (Vercel compatible!)
       const cleanMsg = messageText.toLowerCase().trim();
       let responseText = "Isso está além da minha operação.";
