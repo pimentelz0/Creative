@@ -811,14 +811,6 @@ export default function App() {
                             className="p-3 bg-zinc-900 border border-zinc-800/80 rounded-2xl flex items-center justify-between gap-3 shadow-md hover:scale-[1.01] hover:border-zinc-700 transition cursor-pointer group animate-fade-in"
                           >
                             <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-[48px] h-[48px] rounded-xl overflow-hidden shrink-0 border border-zinc-800">
-                                <img 
-                                  src={imageThumb} 
-                                  alt={client.name} 
-                                  referrerPolicy="no-referrer"
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
                               <div className="min-w-0 leading-tight">
                                 <h4 className="text-xs font-bold text-white truncate group-hover:text-zinc-300 transition">
                                   {client.name}
@@ -869,7 +861,7 @@ export default function App() {
                             Projetos Ativos
                           </p>
                           <h4 className="text-sm font-black text-white font-sans mt-0.5">
-                            {clients.length}
+                            {clients.filter(c => c.progress !== 'entregue').length}
                           </h4>
                         </div>
                       </div>
@@ -1521,11 +1513,11 @@ export default function App() {
                             setIsUpdatingPassword(false);
                           }
                         }}
-                        className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:from-zinc-805 disabled:to-zinc-800 text-white font-extrabold text-[10px] rounded-xl border-none cursor-pointer uppercase tracking-wider flex items-center justify-center gap-1.5 transition"
+                        className="w-full py-2 bg-white hover:bg-zinc-200 disabled:bg-zinc-800 text-black font-extrabold text-[10px] rounded-xl border-none cursor-pointer uppercase tracking-wider flex items-center justify-center gap-1.5 transition"
                       >
                         {isUpdatingPassword ? (
                           <>
-                            <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                            <svg className="animate-spin h-3.5 w-3.5 text-black" fill="none" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>

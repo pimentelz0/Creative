@@ -27,7 +27,7 @@ export function DashboardStats({
   // debtorsCount = 3 (Mariana, Florescer, Nathália)
   // We can render this live, which guarantees it works either with custom or default state! Excellent engineering.
   
-  const activeClientsCount = clients.length;
+  const activeClientsCount = clients.filter(c => c.progress !== 'entregue').length;
   
   let totalReceived = 0;
   let totalToReceive = 0;
