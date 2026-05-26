@@ -137,6 +137,13 @@ export default function App() {
   } | null>(null);
 
   // --- AUTH SESSION STATE ---
+  const [showAgentDrawer, setShowAgentDrawer] = useState<boolean>(false);
+  const [agentMessages, setAgentMessages] = useState<{ sender: 'user' | 'agent'; text: string; time: string }[]>([
+    { sender: 'agent', text: 'Estou um passo à frente. O que deseja que eu reorganize?', time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
+  ]);
+  const [agentInput, setAgentInput] = useState<string>('');
+  const [isAgentTyping, setIsAgentTyping] = useState<boolean>(false);
+
   const [sessionUser, setSessionUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [bypassOffline, setBypassOffline] = useState<boolean>(() => {
@@ -437,6 +444,135 @@ export default function App() {
       showToast(`Etapa atualizada para: ${progressLabel}`);
     } catch (err) {
       showToast('Erro ao atualizar progresso.', 'error');
+    }
+  };
+
+  const handleAgentAction = async (action: { type: string; payload?: any }) => {
+    if (!action) return;
+    try {
+      if (action.type === 'create_client') {
+        const { name, service, totalValue, paidValue, progress, contact } = action.payload;
+        
+        let paymentStatus: PaymentStatus = 'em_aberto';
+        if (paidValue >= totalValue && totalValue > 0) {
+          paymentStatus = 'pago';
+        } else if (paidValue > 0 && paidValue < totalValue) {
+          paymentStatus = 'pago_parcial';
+        }
+
+        const newClient: Client = {
+          id: 'c_' + Date.now(),
+          name: name || 'Novo Cliente',
+          contact: contact || '(85) 99999-9999',
+          service: service || 'Produção Audiovisual',
+          totalValue: totalValue || 1500,
+          paidValue: paidValue || 0,
+          paymentStatus: paymentStatus,
+          progress: progress || 'roteiro',
+          observations: 'Criado de forma automatizada via comando do Agente C.',
+          createdAt: new Date().toISOString()
+        };
+
+        const updated = [newClient, ...clients];
+        setClients(updated);
+        saveClientsToStorage(updated);
+        
+        if (supabaseConnected) {
+          await saveClientToSupabase(newClient);
+        }
+        showToast(`"${newClient.name}" cadastrada com extremo sucesso sob instrução de C! 🚀`);
+      } 
+      else if (action.type === 'update_client_progress') {
+        const { clientId, progress } = action.payload;
+        if (!clientId) return;
+
+        const updated = clients.map(c => {
+          if (c.id === clientId) {
+            const updatedClient = { ...c, progress: progress as ProjectProgress };
+            if (supabaseConnected) {
+              saveClientToSupabase(updatedClient);
+            }
+            return updatedClient;
+          }
+          return c;
+        });
+
+        setClients(updated);
+        saveClientsToStorage(updated);
+        showToast(`Fase do projeto atualizada para ${progress} via Agente C! 🎥`);
+      }
+      else if (action.type === 'delete_client') {
+        const { clientId } = action.payload;
+        if (!clientId) return;
+
+        const target = clients.find(c => c.id === clientId);
+        const updated = clients.filter(c => c.id !== clientId);
+        setClients(updated);
+        saveClientsToStorage(updated);
+        
+        if (supabaseConnected) {
+          await deleteClientFromSupabase(clientId);
+        }
+        showToast(`"${target ? target.name : 'Projeto'}" removido do Creative via Agente C.`, 'info');
+      }
+    } catch (err) {
+      console.error("Erro ao aplicar ação do agente:", err);
+    }
+  };
+
+  const handleSendAgentMessage = async (textToSend?: string) => {
+    const messageText = textToSend || agentInput;
+    if (!messageText.trim()) return;
+
+    const userMsg = { 
+      sender: 'user' as const, 
+      text: messageText, 
+      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) 
+    };
+    
+    setAgentMessages(prev => [...prev, userMsg]);
+    setAgentInput('');
+    setIsAgentTyping(true);
+
+    try {
+      const response = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText,
+          clients: clients,
+          appointments: appointments,
+          profile: profile
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha na resposta do servidor');
+      }
+
+      const data = await response.json();
+      
+      const agentMsg = {
+        sender: 'agent' as const,
+        text: data.message || 'Diretriz processada e resolvida.',
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      setAgentMessages(prev => [...prev, agentMsg]);
+
+      if (data.action) {
+        await handleAgentAction(data.action);
+      }
+    } catch (error) {
+      console.error('Agent C error:', error);
+      const errMsg = {
+        sender: 'agent' as const,
+        text: 'Nossos canais de comunicação oscilaram. Mas a diretriz permanece registrada em minhas prioridades.',
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      };
+      setAgentMessages(prev => [...prev, errMsg]);
+    } finally {
+      setIsAgentTyping(false);
     }
   };
 
@@ -772,16 +908,16 @@ export default function App() {
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    {clients.length === 0 ? (
+                    {clients.filter(c => c.progress !== 'entregue').length === 0 ? (
                       <div className="p-5 text-center bg-zinc-900/40 border border-zinc-800/60 rounded-2xl shadow-sm text-neutral-400 font-sans">
                         <span className="text-xl">🎬</span>
-                        <p className="font-bold text-xs text-white mt-2">Nenhum projeto cadastrado</p>
+                        <p className="font-bold text-xs text-white mt-2">Nenhum projeto ativo cadastrado</p>
                         <p className="text-[10px] mt-0.5 text-zinc-400">
-                          Toque em <strong className="text-white">"Criar"</strong> acima para registrar seu primeiro contrato ou bloqueio de agenda!
+                          Toque em <strong className="text-white">"Criar"</strong> acima para registrar seu primeiro projeto!
                         </p>
                       </div>
                     ) : (
-                      clients.slice(0, 3).map(client => {
+                      clients.filter(c => c.progress !== 'entregue').slice(0, 3).map(client => {
                         const progressPct = client.progress === 'entregue' ? 100 : client.progress === 'editado' ? 75 : client.progress === 'gravado' ? 50 : 25;
                         const progressLabel = client.progress === 'entregue' ? 'Entregue 🚀' : client.progress === 'editado' ? 'Editado 💻' : client.progress === 'gravado' ? 'Gravado 🎥' : 'Roteiro 📝';
                         const isVideo = client.service.toLowerCase().includes('reels') || client.service.toLowerCase().includes('vídeo') || client.service.toLowerCase().includes('video');
@@ -1562,6 +1698,107 @@ export default function App() {
           </div>
         )}
 
+        {/* AGENTE C OPERATIONAL DRAWER */}
+        {showAgentDrawer && (
+          <div 
+            className="fixed inset-0 z-50 flex justify-end bg-black/85 backdrop-blur-sm animate-fade-in font-sans"
+            onClick={() => setShowAgentDrawer(false)}
+          >
+            <div 
+              className="w-full max-w-sm h-full bg-[#0a0a0c] border-l border-zinc-900 p-6 flex flex-col justify-between shadow-2xl relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-zinc-900">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-zinc-950 border border-zinc-850 flex items-center justify-center relative">
+                    <span className="text-sm font-black text-purple-400 font-mono">C</span>
+                    <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-[#0a0a0c]" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-white">Agente C</h3>
+                    <p className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest">NÚCLEO CONFIGURADO</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAgentDrawer(false)}
+                  className="w-7 h-7 flex items-center justify-center bg-zinc-950 border border-zinc-900 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-900 hover:border-zinc-850 cursor-pointer transition select-none text-[10px]"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Chat Message Box */}
+              <div className="flex-1 my-4 overflow-y-auto space-y-3 pr-1 scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+                {agentMessages.map((msg, idx) => {
+                  const isUser = msg.sender === 'user';
+                  return (
+                    <div 
+                      key={idx}
+                      className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in`}
+                    >
+                      <div className={`max-w-[85%] rounded-2xl p-3.5 ${isUser ? 'bg-white text-black rounded-tr-none' : 'bg-zinc-950 text-zinc-300 border border-zinc-900 rounded-tl-none'} text-xs leading-relaxed`}>
+                        <p className="whitespace-pre-line font-medium">{msg.text}</p>
+                        <span className={`text-[8px] font-mono block mt-1.5 ${isUser ? 'text-black/55' : 'text-zinc-650'}`}>
+                          {msg.time}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {isAgentTyping && (
+                  <div className="flex justify-start animate-pulse">
+                    <div className="bg-zinc-950 text-zinc-500 border border-zinc-900 rounded-2xl rounded-tl-none p-3.5 text-[10px] uppercase font-bold tracking-widest">
+                      C está computando...
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Suggestions Chips */}
+              <div className="pb-3 flex gap-2 overflow-x-auto whitespace-nowrap scrollbar-none">
+                {[
+                  { label: "Novo de R$ 2.500", text: "C, cria um projeto pra Ana, 2500 reais, tá no roteiro" },
+                  { label: "Mudar p/ Entregue", text: "Marca o projeto de Ana como entregue" },
+                  { label: "Quantos ativos?", text: "Quanto tenho a receber esse mês?" }
+                ].map((chip, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setAgentInput(chip.text);
+                    }}
+                    className="px-3 py-1.5 bg-zinc-950 text-zinc-400 border border-zinc-900 text-[8px] uppercase tracking-wider font-extrabold rounded-lg hover:border-zinc-800 hover:text-white cursor-pointer transition select-none shrink-0"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Input Area */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Instruir Agente C..."
+                  value={agentInput}
+                  onChange={(e) => setAgentInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSendAgentMessage();
+                    }
+                  }}
+                  className="flex-1 px-3.5 py-3 bg-zinc-950 text-white placeholder-zinc-500 border border-zinc-900 rounded-2xl text-xs outline-none focus:border-zinc-700 transition font-sans"
+                />
+                <button
+                  onClick={() => handleSendAgentMessage()}
+                  className="px-4 bg-white text-black hover:bg-zinc-200 transition font-black text-xs rounded-2xl cursor-pointer shadow-md uppercase tracking-wider border-none"
+                >
+                  Enviar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* HAMBURGER SIDEBAR MENU DRAWER */}
         {showMenuDrawer && (
           <div 
@@ -1942,25 +2179,7 @@ export default function App() {
           id="mobile-tab-deck"
           style={{ contentVisibility: 'auto' }}
         >
-          {/* TAB 1: Home dashboard */}
-          <button
-            onClick={() => {
-              navigateToSection('dashboard');
-              setClientToEdit(null);
-              setIsClientFormOpen(false);
-            }}
-            className="flex flex-col items-center gap-1.5 bg-transparent border-none outline-none cursor-pointer flex-1 py-1"
-            type="button"
-          >
-            <span className={`transition ${currentSection === 'dashboard' ? 'scale-105 text-white font-bold' : 'text-zinc-500 opacity-60'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-home"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            </span>
-            <span className={`text-[8px] font-black uppercase tracking-wider ${currentSection === 'dashboard' ? 'text-white' : 'text-zinc-500'}`}>
-              Início
-            </span>
-          </button>
-
-          {/* TAB 2: Clients list */}
+          {/* TAB 1: Clients list */}
           <button
             onClick={() => {
               navigateToSection('clients');
@@ -1978,24 +2197,7 @@ export default function App() {
             </span>
           </button>
 
-          {/* TAB 3: Overlap Center float + custom plus registration button */}
-          <div className="flex-1 flex items-center justify-center relative h-full" id="tabbar-plus-button-container">
-            <button
-               onClick={() => {
-                navigateToSection('clients');
-                setClientToEdit(null);
-                setIsClientFormOpen(true);
-                showToast('Iniciando registro de trabalho...', 'info');
-              }}
-              className="absolute -top-4 w-12 h-12 rounded-full bg-white text-black flex items-center justify-center font-bold text-2xl transition hover:scale-110 active:scale-95 shadow-lg border-4 border-[#0A0A0C] z-50 cursor-pointer select-none"
-              title="Novo Projeto"
-              type="button"
-            >
-              +
-            </button>
-          </div>
-
-          {/* TAB 4: Calendar view */}
+          {/* TAB 2: Calendar view */}
           <button
             onClick={() => {
               navigateToSection('calendar');
@@ -2010,6 +2212,40 @@ export default function App() {
             </span>
             <span className={`text-[8px] font-black uppercase tracking-wider ${currentSection === 'calendar' ? 'text-white' : 'text-zinc-500'}`}>
               Agenda
+            </span>
+          </button>
+
+          {/* TAB 3: Home dashboard - CENTRALIZED */}
+          <button
+            onClick={() => {
+              navigateToSection('dashboard');
+              setClientToEdit(null);
+              setIsClientFormOpen(false);
+            }}
+            className="flex flex-col items-center gap-1.5 bg-transparent border-none outline-none cursor-pointer flex-1 py-1"
+            type="button"
+          >
+            <span className={`transition ${currentSection === 'dashboard' ? 'scale-105 text-white font-bold' : 'text-zinc-500 opacity-60'}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-home"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </span>
+            <span className={`text-[8px] font-black uppercase tracking-wider ${currentSection === 'dashboard' ? 'text-white' : 'text-zinc-500'}`}>
+              Início
+            </span>
+          </button>
+
+          {/* TAB 4: Agente C */}
+          <button
+            onClick={() => {
+              setShowAgentDrawer(true);
+            }}
+            className="flex flex-col items-center gap-1.5 bg-transparent border-none outline-none cursor-pointer flex-1 py-1"
+            type="button"
+          >
+            <span className={`transition ${showAgentDrawer ? 'scale-110 text-purple-450 font-bold font-mono' : 'text-zinc-500 opacity-60 hover:text-zinc-350'}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-sparkles text-purple-400"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/><path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5Z"/><path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1Z"/></svg>
+            </span>
+            <span className={`text-[8px] font-black uppercase tracking-wider ${showAgentDrawer ? 'text-purple-400 font-bold' : 'text-zinc-500'}`}>
+              Agente C
             </span>
           </button>
 
