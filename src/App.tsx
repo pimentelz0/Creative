@@ -1474,6 +1474,12 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
                   onDeleteAppointment={handleDeleteAppointment}
                   onUpdateClientPaymentStatus={handleUpdatePaymentStatus}
                   onUpdateClientProgress={handleUpdateProgress}
+                  onEditClient={(client) => {
+                    setClientToEdit(client);
+                    setIsClientFormOpen(true);
+                    setCurrentSection('clients');
+                    showToast(`Editando dados de "${client.name}"`, 'info');
+                  }}
                 />
               </div>
             )}

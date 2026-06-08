@@ -13,6 +13,7 @@ interface VisualCalendarProps {
   onDeleteAppointment: (id: string) => void;
   onUpdateClientPaymentStatus: (clientId: string, newStatus: PaymentStatus) => void;
   onUpdateClientProgress: (clientId: string, newProgress: ProjectProgress) => void;
+  onEditClient?: (client: Client) => void;
 }
 
 export function VisualCalendar({
@@ -21,7 +22,8 @@ export function VisualCalendar({
   onAddAppointment,
   onDeleteAppointment,
   onUpdateClientPaymentStatus,
-  onUpdateClientProgress
+  onUpdateClientProgress,
+  onEditClient
 }: VisualCalendarProps) {
   const [currentYear, setCurrentYear] = useState<number>(() => {
     const savedYear = localStorage.getItem('cliboard_calendar_last_year');
@@ -416,34 +418,52 @@ export function VisualCalendar({
                           )}
                         </div>
 
-                        {deletingApptId === app.id ? (
-                          <div className="flex items-center gap-1.5 shrink-0 animate-fade-in">
+                        <div className="flex flex-col gap-1.5 shrink-0 items-end">
+                          {linked && onEditClient && (
                             <button
+                              type="button"
                               onClick={() => {
-                                onDeleteAppointment(app.id);
-                                setDeletingApptId(null);
+                                setIsPopupOpen(false);
+                                onEditClient(linked);
                               }}
-                              className="text-[9px] font-bold text-white px-2 py-1 bg-rose-600 hover:bg-rose-700 rounded border-none cursor-pointer transition"
+                              className="text-[9px] font-extrabold text-[#1E1B2E] hover:text-purple-950 dark:text-neutral-200 dark:hover:text-white px-2.5 py-1 bg-white dark:bg-neutral-800 hover:bg-purple-50 dark:hover:bg-neutral-750 border border-zinc-250 dark:border-neutral-700 rounded-lg shrink-0 cursor-pointer transition flex items-center gap-1 font-sans shadow-sm"
                             >
-                              Sim
+                              Editar ✏️
                             </button>
+                          )}
+
+                          {deletingApptId === app.id ? (
+                            <div className="flex items-center gap-1 shrink-0 animate-fade-in">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onDeleteAppointment(app.id);
+                                  setDeletingApptId(null);
+                                }}
+                                className="text-[9px] font-bold text-white px-2 py-1 bg-rose-600 hover:bg-rose-700 rounded border-none cursor-pointer transition"
+                              >
+                                Sim
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingApptId(null)}
+                                className="text-[9px] font-bold text-zinc-700 dark:text-zinc-300 px-2 py-1 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded border-none cursor-pointer transition"
+                              >
+                                Não
+                              </button>
+                            </div>
+                          ) : (
                             <button
-                              onClick={() => setDeletingApptId(null)}
-                              className="text-[9px] font-bold text-zinc-700 dark:text-zinc-300 px-2 py-1 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded border-none cursor-pointer transition"
+                              type="button"
+                              onClick={() => {
+                                setDeletingApptId(app.id);
+                              }}
+                              className="text-[9px] font-bold text-rose-700 hover:text-rose-800 px-2 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 rounded border border-rose-100 dark:border-[#991B1B]/40 shrink-0 cursor-pointer transition"
                             >
-                              Não
+                              Apagar 🗑️
                             </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setDeletingApptId(app.id);
-                            }}
-                            className="text-[9px] font-bold text-rose-700 hover:text-rose-800 px-2 py-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 rounded border border-rose-100 dark:border-[#991B1B]/40 shrink-0 cursor-pointer transition"
-                          >
-                            Apagar 🗑️
-                          </button>
-                        )}
+                          )}
+                        </div>
                       </div>
                     );
                   })}
