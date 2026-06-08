@@ -166,10 +166,24 @@ export default function App() {
 
   // 2. Onboarding check when user or session changes
   useEffect(() => {
+    if (authLoading || (sessionUser && supabaseLoading)) {
+      // Defer checking onboarding state until authentication has finished
+      // and user cloud data is fetched to determine if user has a profile/clients
+      return;
+    }
+
     if (sessionUser || bypassOffline) {
       const userId = sessionUser?.id || 'offline';
       const key = `creative_onboarded_v2_${userId}`;
-      const alreadyOnboarded = localStorage.getItem(key) === 'true';
+      const alreadyOnboardedLocal = localStorage.getItem(key) === 'true';
+      const alreadyOnboardedMeta = sessionUser?.user_metadata?.creative_onboarded_v2 === true;
+      
+      if (alreadyOnboardedMeta && !alreadyOnboardedLocal) {
+        localStorage.setItem(key, 'true');
+      }
+
+      const alreadyOnboarded = alreadyOnboardedLocal || alreadyOnboardedMeta;
+
       if (!alreadyOnboarded) {
         setShowOnboarding(true);
         setOnboardingStep('terms');
@@ -179,7 +193,7 @@ export default function App() {
     } else {
       setShowOnboarding(false);
     }
-  }, [sessionUser, bypassOffline]);
+  }, [sessionUser, bypassOffline, authLoading, supabaseLoading]);
 
   // --- PERSISTENCE & AUTH SYNC EFFECTS ---
   
@@ -269,6 +283,21 @@ export default function App() {
           if (cloudNotes !== null) {
             setNotes(cloudNotes);
             saveNotesToStorage(cloudNotes);
+          }
+
+          // Auto-bypass onboarding for returning users who already have a profile or clients in database
+          if (cloudProfile !== null || (cloudClients !== null && cloudClients.length > 0)) {
+            const userId = sessionUser.id;
+            const key = `creative_onboarded_v2_${userId}`;
+            localStorage.setItem(key, 'true');
+            setShowOnboarding(false);
+            
+            // If the metadata isn't set in auth yet, persist it there to avoid future browser resets
+            if (!sessionUser.user_metadata?.creative_onboarded_v2) {
+              supabase.auth.updateUser({
+                data: { creative_onboarded_v2: true }
+              }).catch(err => console.error('Erro ao atualizar metadata de onboarding:', err));
+            }
           }
 
           // Dynamic Profile Sync & Legacy Fallback Self-Repair Mechanics for Google/Social log-in
@@ -1706,6 +1735,14 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
                       const userId = sessionUser?.id || 'offline';
                       const key = `creative_onboarded_v2_${userId}`;
                       localStorage.setItem(key, 'true');
+                      
+                      // Save onboarding state in User Metadata too to prevent future browser resets
+                      if (sessionUser) {
+                        supabase.auth.updateUser({
+                          data: { creative_onboarded_v2: true }
+                        }).catch(err => console.error('Erro ao atualizar metadata onboarding:', err));
+                      }
+
                       setShowOnboarding(false);
                       showToast('Bem-vindo à nova era do seu estúdio! Boas gravações! 🎬✨', 'success');
                     }}
