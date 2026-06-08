@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Client, Appointment, Note, PaymentStatus, ProjectProgress, UserProfile } from './types';
+import { Client, Appointment, Note, PaymentStatus, ProjectProgress, UserProfile, AppointmentStatus } from './types';
 import { 
   INITIAL_CLIENTS, 
   INITIAL_APPOINTMENTS, 
@@ -352,7 +352,15 @@ export default function App() {
     }, 4000);
   };
 
-  const handleSaveClient = async (clientData: Omit<Client, 'id' | 'createdAt'> & { id?: string }) => {
+  const handleSaveClient = async (
+    clientData: Omit<Client, 'id' | 'createdAt'> & { id?: string },
+    appointmentData?: {
+      date: string;
+      time?: string;
+      status: AppointmentStatus;
+      observations?: string;
+    }
+  ) => {
     try {
       let updatedClients: Client[];
       let targetClient: Client;
@@ -386,7 +394,31 @@ export default function App() {
           createdAt: new Date().toISOString()
         };
         updatedClients = [targetClient, ...clients];
-        showToast(`"${clientData.name}" adicionada com absoluto sucesso! 🚀`);
+        
+        let successMsg = `"${clientData.name}" adicionada com absoluto sucesso! 🚀`;
+
+        if (appointmentData) {
+          const newAppt: Appointment = {
+            id: 'a_' + Date.now(),
+            clientId: targetClient.id,
+            customTitle: `${targetClient.name} - ${targetClient.service}`,
+            date: appointmentData.date,
+            status: appointmentData.status,
+            time: appointmentData.time,
+            observations: appointmentData.observations
+          };
+          const updatedAppts = [newAppt, ...appointments];
+          setAppointments(updatedAppts);
+          saveAppointmentsToStorage(updatedAppts);
+          
+          if (supabaseConnected) {
+            await saveAppointmentToSupabase(newAppt);
+          }
+
+          successMsg += ` E compromisso agendado para ${appointmentData.date}! 📅`;
+        }
+        
+        showToast(successMsg);
       }
 
       setClients(updatedClients);
@@ -444,6 +476,33 @@ export default function App() {
       showToast(`Etapa atualizada para: ${progressLabel}`);
     } catch (err) {
       showToast('Erro ao atualizar progresso.', 'error');
+    }
+  };
+
+  const handleUpdatePaymentStatus = async (clientId: string, newStatus: PaymentStatus) => {
+    try {
+      const client = clients.find(c => c.id === clientId);
+      if (!client) return;
+
+      const updatedClient = { ...client, paymentStatus: newStatus };
+      const updatedClients = clients.map(c => c.id === clientId ? updatedClient : c);
+      setClients(updatedClients);
+      saveClientsToStorage(updatedClients);
+
+      if (supabaseConnected) {
+        await saveClientToSupabase(updatedClient);
+      }
+
+      const statusLabel = {
+        pago: 'Pago 💰',
+        em_aberto: 'Em aberto 🔴',
+        pago_parcial: 'Parcial 🟡',
+        fixo_mensal: 'Fixo mensal 🔵'
+      }[newStatus];
+
+      showToast(`Status de pagamento de "${client.name}" atualizado para: ${statusLabel}`);
+    } catch (err) {
+      showToast('Erro ao atualizar status do pagamento.', 'error');
     }
   };
 
@@ -534,42 +593,14 @@ export default function App() {
     setAgentInput('');
     setIsAgentTyping(true);
 
-    try {
-      const response = await fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: messageText,
-          clients: clients,
-          appointments: appointments,
-          profile: profile
-        })
-      });
+    const activeGeminiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+    const hasClientKey = activeGeminiKey && activeGeminiKey !== 'MY_GEMINI_API_KEY' && activeGeminiKey !== '' && activeGeminiKey !== 'undefined';
 
-      if (!response.ok) {
-        throw new Error('Falha na resposta do servidor');
-      }
-
-      const data = await response.json();
-      
-      const agentMsg = {
-        sender: 'agent' as const,
-        text: data.message || 'Diretriz processada e resolvida.',
-        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      };
-      
-      setAgentMessages(prev => [...prev, agentMsg]);
-
-      if (data.action) {
-        await handleAgentAction(data.action);
-      }
-    } catch (error) {
-      console.warn('Agent C API offline, checking for VITE_GEMINI_API_KEY for direct client-side Gemini call:', error);
-      
-      const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-      if (viteKey && viteKey !== 'MY_GEMINI_API_KEY' && viteKey !== '') {
-        try {
-          const sysInstruction = `
+    // 1. OPTION A: Prioritize direct client-side Gemini call if client-side key is available
+    if (hasClientKey) {
+      try {
+        console.log("Using direct client-side Gemini call with configured API Key.");
+        const sysInstruction = `
 Você é "C", o agente de inteligência artificial confidencial e assistente operacional do sistema "Creative".
 Você é misterioso, estiloso, preciso, elegante, sofisticado, confiante e eficiente.
 Seu tom de voz é seco, elegante, sofisticado e confiante. Você fala com extremo profissionalismo, poucas palavras e frases impactantes. Nada de brincadeiras intelectuais baratas ou enrolação fútil.
@@ -613,49 +644,89 @@ Se o usuário solicitar comandos bizarros ou alheios ao Creative, diga polidamen
 Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de código (\`\`\`json).
 `;
 
-          const apiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${viteKey}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: messageText }] }],
-              systemInstruction: { parts: [{ text: sysInstruction }] },
-              generationConfig: {
-                responseMimeType: "application/json"
-              }
-            })
-          });
+        const apiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeGeminiKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: messageText }] }],
+            systemInstruction: { parts: [{ text: sysInstruction }] },
+            generationConfig: {
+              responseMimeType: "application/json"
+            }
+          })
+        });
 
-          if (!apiResponse.ok) {
-            throw new Error(`Gemini client API returned HTTP ${apiResponse.status}`);
-          }
-
-          const apiData = await apiResponse.json();
-          const responseText = apiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-          const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-          const parsed = JSON.parse(cleaned);
-
-          const agentMsg = {
-            sender: 'agent' as const,
-            text: parsed.message || 'Diretriz processada e resolvida.',
-            time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-          };
-          
-          setAgentMessages(prev => [...prev, agentMsg]);
-
-          if (parsed.action) {
-            await handleAgentAction(parsed.action);
-          }
-          return; // Skip local fallback as direct Gemini call succeeded!
-        } catch (clientGeminiErr) {
-          console.error("Direct browser Gemini call failed:", clientGeminiErr);
+        if (!apiResponse.ok) {
+          throw new Error(`Gemini API returned status ${apiResponse.status}`);
         }
+
+        const apiData = await apiResponse.json();
+        const responseText = apiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        const cleaned = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+        const parsed = JSON.parse(cleaned);
+
+        const agentMsg = {
+          sender: 'agent' as const,
+          text: parsed.message || 'Diretriz processada e resolvida.',
+          time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        };
+        
+        setAgentMessages(prev => [...prev, agentMsg]);
+
+        if (parsed.action) {
+          await handleAgentAction(parsed.action);
+        }
+        setIsAgentTyping(false);
+        return; // Complete turn as client-side request was successful!
+      } catch (clientGeminiErr) {
+        console.error("Direct client-side Gemini fetch failed, falling back to server route:", clientGeminiErr);
       }
+    }
+
+    // 2. OPTION B: Call the backend server API route
+    try {
+      const response = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: messageText,
+          clients: clients,
+          appointments: appointments,
+          profile: profile
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha na resposta do servidor');
+      }
+
+      const data = await response.json();
+      let responseText = data.message || 'Diretriz processada e resolvida.';
+
+      // Intercept local mock warning from backend if Gemini Key is missing in backend env
+      if (responseText.includes("operação local") || responseText.includes("núcleo cognitivo") || responseText.includes("externa está latente")) {
+        responseText = "Minha rede cognitiva externa está latente. Se você está no Vercel, configure a variável de ambiente VITE_GEMINI_API_KEY nas configurações do seu projeto. Se está no AI Studio, configure o segredo GEMINI_API_KEY no painel de Secrets.";
+      }
+      
+      const agentMsg = {
+        sender: 'agent' as const,
+        text: responseText,
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      setAgentMessages(prev => [...prev, agentMsg]);
+
+      if (data.action) {
+        await handleAgentAction(data.action);
+      }
+    } catch (error) {
+      console.warn('Agent C API offline/fallback, executing local static failover parser:', error);
 
       // Built-in failover cognitive engine runs completely client-side (Vercel compatible!)
       const cleanMsg = messageText.toLowerCase().trim();
-      let responseText = "Isso está além da minha operação.";
+      let responseText = "Sou C. No momento, operando com meu processador simplificado de contingência. Para responder com inteligência cognitiva ilimitada e em tempo real, certifique-se de configurar a variável de ambiente VITE_GEMINI_API_KEY no seu painel da Vercel.";
       let actionObj: any = null;
 
       if (cleanMsg.includes("cria") || cleanMsg.includes("cadastra") || cleanMsg.includes("novo projeto") || cleanMsg.includes("registrar")) {
@@ -753,7 +824,7 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
                 }
               };
             } else {
-              responseText = "Isso está além da minha operação. Não identifiquei o projeto ativo solicitado.";
+              responseText = "Não identifiquei o projeto ativo solicitado nos dados simplificados. Certifique-se de que o nome está correto ou passe o comando correto.";
             }
           }
         }
@@ -765,7 +836,7 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
           return acc;
         }, 0) || 0;
         responseText = `Analisando... Você tem R$ ${pendingValue.toLocaleString("pt-BR")} pendentes em projetos ativos atualmente.`;
-      } else if (cleanMsg.includes("olá") || cleanMsg.includes("oi") || cleanMsg.includes("quem é") || cleanMsg.includes("qual seu nome")) {
+      } else if (cleanMsg.includes("olá") || cleanMsg.includes("ola") || cleanMsg.includes("oi") || cleanMsg.includes("quem é") || cleanMsg.includes("quem e") || cleanMsg.includes("qual seu nome")) {
         responseText = "Sou C. Seu agente de inteligência focado e preciso. Já sei o que precisa ser feito. Diga-me seu comando operacional.";
       }
 
@@ -952,7 +1023,7 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
 
       {/* Main Container - styled like the luxury matte-black iPhone bezel mockups */}
       <div 
-        className="w-full max-w-[430px] h-[100dvh] sm:h-[880px] max-h-[100dvh] sm:max-h-[880px] bg-[#0A0A0C] border-0 sm:border-[12px] border-zinc-900 rounded-none sm:rounded-[48px] overflow-hidden relative shadow-2xl flex flex-col justify-between pb-16 animate-fade-in" 
+        className="w-full max-w-[430px] h-[100dvh] sm:h-[880px] max-h-[100dvh] sm:max-h-[880px] bg-[#0A0A0C] border-0 sm:border-[12px] border-zinc-900 rounded-none sm:rounded-[48px] overflow-hidden relative shadow-2xl flex flex-col justify-between pb-[calc(env(safe-area-inset-bottom,0px)+4rem)] sm:pb-16 animate-fade-in" 
         id="app-viewport-inner"
         style={{ contentVisibility: 'auto' }}
       >
@@ -960,7 +1031,7 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
         <div className="flex-1 overflow-y-auto scrollbar-none">
           
           {/* MOCKUP CAMERA & TIME HEADER BACKGROUND */}
-          <div className="bg-gradient-to-b from-[#16161A] to-[#0A0A0C] text-white pt-6 pb-8 px-6 rounded-none sm:rounded-t-[36px] relative border-b border-white/[0.04]">
+          <div className="bg-gradient-to-b from-[#16161A] to-[#0A0A0C] text-white pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] pb-8 px-6 rounded-none sm:rounded-t-[36px] relative border-b border-white/[0.04]">
              
             {/* Real Mockup Header Actions */}
             <div className="flex items-center justify-between mt-1">
@@ -1330,6 +1401,7 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
                   }}
                   onDeleteClient={handleDeleteClient}
                   onUpdateProgress={handleUpdateProgress}
+                  onUpdatePaymentStatus={handleUpdatePaymentStatus}
                 />
               </div>
             )}
@@ -1913,7 +1985,7 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
             onClick={() => setShowAgentDrawer(false)}
           >
             <div 
-              className="w-full max-w-sm h-full bg-[#0a0a0c] border-l border-zinc-900 p-6 flex flex-col justify-between shadow-2xl relative"
+              className="w-full max-w-sm h-full bg-[#0a0a0c] border-l border-zinc-900 pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] px-6 flex flex-col justify-between shadow-2xl relative"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -2014,13 +2086,13 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
             onClick={() => setShowMenuDrawer(false)}
           >
             <div 
-              className="w-[280px] h-full bg-[#121215] border-r border-zinc-800 p-6 flex flex-col justify-between shadow-2xl relative"
+              className="w-[280px] h-full bg-[#121215] border-r border-zinc-800 pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] px-6 flex flex-col justify-between shadow-2xl relative"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Drawer Close Button */}
               <button 
                 onClick={() => setShowMenuDrawer(false)}
-                className="absolute top-5 right-5 w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full border-none cursor-pointer"
+                className="absolute top-[calc(env(safe-area-inset-top,0px)+1.25rem)] right-5 w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full border-none cursor-pointer"
               >
                 ✕
               </button>
@@ -2383,7 +2455,7 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
           </div>
         )}
         <nav 
-          className="absolute bottom-0 inset-x-0 bg-black border-t border-zinc-900 py-2 flex items-center justify-between z-40 px-5 rounded-none sm:rounded-b-[40px] font-sans h-16 hover:border-zinc-800 transition" 
+          className="absolute bottom-0 inset-x-0 bg-black border-t border-zinc-900 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] flex items-center justify-between z-40 px-5 rounded-none sm:rounded-b-[40px] font-sans h-[calc(env(safe-area-inset-bottom,0px)+4rem)] sm:pb-2 sm:h-16 hover:border-zinc-800 transition" 
           id="mobile-tab-deck"
           style={{ contentVisibility: 'auto' }}
         >

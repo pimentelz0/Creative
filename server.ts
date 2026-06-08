@@ -83,7 +83,7 @@ async function startServer() {
       } else if (cleanMsg.includes("olá") || cleanMsg.includes("oi") || cleanMsg.includes("quem é") || cleanMsg.includes("qual seu nome")) {
         responseText = "Sou C. Seu agente de inteligência focado e preciso. Já sei o que precisa ser feito. Diga-me seu comando operacional.";
       } else {
-        responseText = "Isso está além da minha operação local temporária. Configure meu núcleo cognitivo completo em Configuras > Secrets para expandir meu potencial.";
+        responseText = "Sou C. No momento, operando com meu processador simplificado de contingência. Para ativar minha Inteligência Avançada Real no preview, certifique-se de configurar a chave 'GEMINI_API_KEY' nas configurações (Secrets) do Google AI Studio.";
       }
 
       return res.json({

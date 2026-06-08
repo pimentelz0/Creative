@@ -34,6 +34,7 @@ interface ClientListProps {
   onEditClient: (client: Client) => void;
   onDeleteClient: (id: string) => void;
   onUpdateProgress: (clientId: string, newProgress: ProjectProgress) => void;
+  onUpdatePaymentStatus: (clientId: string, newStatus: PaymentStatus) => void;
 }
 
 export function ClientList({
@@ -43,7 +44,8 @@ export function ClientList({
   onActiveTabChange,
   onEditClient,
   onDeleteClient,
-  onUpdateProgress
+  onUpdateProgress,
+  onUpdatePaymentStatus
 }: ClientListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClientMessage, setSelectedClientMessage] = useState<string | null>(null);
@@ -253,10 +255,22 @@ export function ClientList({
                         {client.service}
                       </p>
                     </div>
-                    {/* Status de Pagamento Colorido */}
-                    <span className={`text-[8px] font-black tracking-widest px-2.5 py-1 rounded-full border shrink-0 ${style.text} ${style.bg} ${style.border} font-sans`}>
-                      {style.label}
-                    </span>
+                    {/* Status de Pagamento Colorido e Interativo */}
+                    <div className="relative shrink-0">
+                      <select
+                        value={client.paymentStatus}
+                        onChange={(e) => onUpdatePaymentStatus(client.id, e.target.value as PaymentStatus)}
+                        className={`text-[8px] font-black tracking-widest pl-3 pr-5 py-1 rounded-full border ${style.text} ${style.bg} ${style.border} font-sans uppercase outline-none cursor-pointer appearance-none hover:brightness-110 active:scale-95 transition-all text-center`}
+                      >
+                        <option value="pago" className="bg-zinc-950 text-emerald-400 font-black">PAGO</option>
+                        <option value="em_aberto" className="bg-zinc-950 text-rose-400 font-black">ABERTO</option>
+                        <option value="pago_parcial" className="bg-zinc-950 text-amber-400 font-black">PARCIAL</option>
+                        <option value="fixo_mensal" className="bg-zinc-950 text-blue-400 font-black">RECORRENTE</option>
+                      </select>
+                      <span className={`absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-[6px] ${style.text}`}>
+                        ▼
+                      </span>
+                    </div>
                   </div>
 
                   {/* Informações Financeiras e Contato */}

@@ -305,8 +305,6 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--nav-bg) !important;
   border-top: 1px solid var(--nav-border) !important;
   backdrop-filter: blur(16px) !important;
-  border-bottom-left-radius: 44px !important;
-  border-bottom-right-radius: 44px !important;
 }
 
 #mobile-tab-deck button span:first-child {

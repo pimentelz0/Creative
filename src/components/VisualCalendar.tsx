@@ -19,8 +19,16 @@ export function VisualCalendar({
   onAddAppointment,
   onDeleteAppointment
 }: VisualCalendarProps) {
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(4); // 4 = Maio
+  const [currentYear, setCurrentYear] = useState<number>(() => {
+    const savedYear = localStorage.getItem('cliboard_calendar_last_year');
+    if (savedYear) return parseInt(savedYear, 10);
+    return new Date().getFullYear();
+  });
+  const [currentMonth, setCurrentMonth] = useState<number>(() => {
+    const savedMonth = localStorage.getItem('cliboard_calendar_last_month');
+    if (savedMonth) return parseInt(savedMonth, 10);
+    return new Date().getMonth();
+  });
   
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -40,21 +48,26 @@ export function VisualCalendar({
 
   const WEEKDAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+  const saveYearMonth = (year: number, month: number) => {
+    setCurrentYear(year);
+    setCurrentMonth(month);
+    localStorage.setItem('cliboard_calendar_last_year', String(year));
+    localStorage.setItem('cliboard_calendar_last_month', String(month));
+  };
+
   const handlePrevMonth = () => {
     if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentYear(prev => prev - 1);
+      saveYearMonth(currentYear - 1, 11);
     } else {
-      setCurrentMonth(prev => prev - 1);
+      saveYearMonth(currentYear, currentMonth - 1);
     }
   };
 
   const handleNextMonth = () => {
     if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentYear(prev => prev + 1);
+      saveYearMonth(currentYear + 1, 0);
     } else {
-      setCurrentMonth(prev => prev + 1);
+      saveYearMonth(currentYear, currentMonth + 1);
     }
   };
 

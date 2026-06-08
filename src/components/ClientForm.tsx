@@ -4,11 +4,19 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Client, PaymentStatus, ProjectProgress } from '../types';
+import { Client, PaymentStatus, ProjectProgress, AppointmentStatus } from '../types';
 
 interface ClientFormProps {
   clientToEdit?: Client | null;
-  onSubmit: (client: Omit<Client, 'id' | 'createdAt'> & { id?: string }) => void;
+  onSubmit: (
+    client: Omit<Client, 'id' | 'createdAt'> & { id?: string },
+    appointment?: {
+      date: string;
+      time?: string;
+      status: AppointmentStatus;
+      observations?: string;
+    }
+  ) => void;
   onCancel: () => void;
 }
 
@@ -23,6 +31,13 @@ export function ClientForm({ clientToEdit, onSubmit, onCancel }: ClientFormProps
   const [observations, setObservations] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Scheduling options directly inside registration form
+  const [shouldSchedule, setShouldSchedule] = useState(false);
+  const [appointmentDate, setAppointmentDate] = useState('');
+  const [appointmentTime, setAppointmentTime] = useState('14:00');
+  const [appointmentStatus, setAppointmentStatus] = useState<AppointmentStatus>('pendente');
+  const [appointmentObservations, setAppointmentObservations] = useState('');
+
   useEffect(() => {
     if (clientToEdit) {
       setName(clientToEdit.name);
@@ -34,6 +49,7 @@ export function ClientForm({ clientToEdit, onSubmit, onCancel }: ClientFormProps
       setProgress(clientToEdit.progress);
       setObservations(clientToEdit.observations || '');
       setError(null);
+      setShouldSchedule(false);
     } else {
       setName('');
       setContact('');
@@ -44,6 +60,11 @@ export function ClientForm({ clientToEdit, onSubmit, onCancel }: ClientFormProps
       setProgress('roteiro');
       setObservations('');
       setError(null);
+      setShouldSchedule(false);
+      setAppointmentDate('');
+      setAppointmentTime('14:00');
+      setAppointmentStatus('pendente');
+      setAppointmentObservations('');
     }
   }, [clientToEdit]);
 
@@ -87,17 +108,32 @@ export function ClientForm({ clientToEdit, onSubmit, onCancel }: ClientFormProps
       return;
     }
 
-    onSubmit({
-      id: clientToEdit?.id,
-      name: name.trim(),
-      contact: contact.trim(),
-      service: service.trim(),
-      totalValue: finalTotal,
-      paidValue: finalPaid,
-      paymentStatus,
-      progress,
-      observations: observations.trim()
-    });
+    if (shouldSchedule && !appointmentDate) {
+      setError('Por favor, selecione a data do agendamento para a agenda.');
+      return;
+    }
+
+    onSubmit(
+      {
+        id: clientToEdit?.id,
+        name: name.trim(),
+        contact: contact.trim(),
+        service: service.trim(),
+        totalValue: finalTotal,
+        paidValue: finalPaid,
+        paymentStatus,
+        progress,
+        observations: observations.trim()
+      },
+      shouldSchedule
+        ? {
+            date: appointmentDate,
+            time: appointmentTime,
+            status: appointmentStatus,
+            observations: appointmentObservations.trim()
+          }
+        : undefined
+    );
   };
 
   return (
@@ -264,6 +300,97 @@ export function ClientForm({ clientToEdit, onSubmit, onCancel }: ClientFormProps
             id="field-client-observations"
           />
         </div>
+
+        {/* Agendamento Opcional na Agenda */}
+        {!clientToEdit && (
+          <div className="p-4 bg-black/60 rounded-2xl border border-zinc-800 mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label 
+                htmlFor="toggle-schedule"
+                className="text-[10px] font-bold text-zinc-300 uppercase tracking-wider cursor-pointer flex items-center gap-2 select-none"
+              >
+                <span>📅 Agendar na Agenda diretamente?</span>
+              </label>
+              <input
+                id="toggle-schedule"
+                type="checkbox"
+                checked={shouldSchedule}
+                onChange={(e) => setShouldSchedule(e.target.checked)}
+                className="w-4 h-4 rounded text-indigo-650 focus:ring-indigo-500 border-zinc-800 bg-[#0A080F] cursor-pointer"
+              />
+            </div>
+
+            {shouldSchedule && (
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-zinc-900/60 transition-all">
+                <div className="space-y-0.5">
+                  <label className="text-[9px] font-bold text-zinc-400 block uppercase tracking-wider">
+                    Data do Agendamento *
+                  </label>
+                  <input
+                    type="date"
+                    value={appointmentDate}
+                    onChange={(e) => setAppointmentDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#0A080F] text-[#F3E8FF] border border-zinc-800 rounded-xl text-xs focus:ring-1 focus:ring-zinc-400 outline-none transition uppercase"
+                  />
+                </div>
+
+                <div className="space-y-0.5">
+                  <label className="text-[9px] font-bold text-zinc-400 block uppercase tracking-wider">
+                    Horário
+                  </label>
+                  <input
+                    type="time"
+                    value={appointmentTime}
+                    onChange={(e) => setAppointmentTime(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#0A080F] text-[#F3E8FF] border border-zinc-800 rounded-xl text-xs focus:ring-1 focus:ring-zinc-400 outline-none transition"
+                  />
+                </div>
+
+                <div className="col-span-2 space-y-1.5 pt-1">
+                  <label className="text-[9px] font-bold text-zinc-400 block uppercase tracking-wider">
+                    Status do Agendamento
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'ocupado', label: 'Ocupado', border: 'border-rose-500/20 text-rose-400 bg-rose-950/20' },
+                      { id: 'pendente', label: 'Pendente', border: 'border-amber-500/20 text-amber-400 bg-amber-950/20' },
+                      { id: 'livre', label: 'Livre', border: 'border-zinc-500/20 text-zinc-400 bg-zinc-950/20' }
+                    ].map((opt) => {
+                      const isActive = appointmentStatus === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setAppointmentStatus(opt.id as AppointmentStatus)}
+                          className={`p-1.5 rounded-lg text-center text-[9px] font-bold uppercase transition ${
+                            isActive 
+                              ? `${opt.border} ring-1 ring-white/10 scale-[1.02]` 
+                              : 'border border-zinc-850 hover:bg-zinc-900 text-zinc-500'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="col-span-2 space-y-0.5 pt-1">
+                  <label className="text-[9px] font-bold text-zinc-400 block uppercase tracking-wider">
+                    Observações do Compromisso
+                  </label>
+                  <input
+                    type="text"
+                    value={appointmentObservations}
+                    onChange={(e) => setAppointmentObservations(e.target.value)}
+                    placeholder="Ex: Ensaio fotográfico externo na praia"
+                    className="w-full px-3 py-1.5 bg-[#0A080F] text-[#F3E8FF] border border-zinc-800 rounded-xl text-xs focus:ring-1 focus:ring-zinc-400 outline-none transition"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Ações */}
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
