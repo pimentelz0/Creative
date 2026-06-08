@@ -379,6 +379,54 @@ export default function App() {
           observations: clientData.observations
         };
         updatedClients = clients.map(c => c.id === clientData.id ? targetClient : c);
+
+        // Update appointment if needed
+        const existingAppt = appointments.find(app => app.clientId === clientData.id);
+        if (appointmentData) {
+          if (existingAppt) {
+            // Update existing appointment
+            const updatedAppt: Appointment = {
+              ...existingAppt,
+              customTitle: `${targetClient.name} - ${targetClient.service}`,
+              date: appointmentData.date,
+              status: appointmentData.status,
+              time: appointmentData.time,
+              observations: appointmentData.observations
+            };
+            const updatedAppts = appointments.map(app => app.id === existingAppt.id ? updatedAppt : app);
+            setAppointments(updatedAppts);
+            saveAppointmentsToStorage(updatedAppts);
+            if (supabaseConnected) {
+              await saveAppointmentToSupabase(updatedAppt);
+            }
+          } else {
+            // Create a brand new appointment
+            const newAppt: Appointment = {
+              id: 'a_' + Date.now(),
+              clientId: targetClient.id,
+              customTitle: `${targetClient.name} - ${targetClient.service}`,
+              date: appointmentData.date,
+              status: appointmentData.status,
+              time: appointmentData.time,
+              observations: appointmentData.observations
+            };
+            const updatedAppts = [newAppt, ...appointments];
+            setAppointments(updatedAppts);
+            saveAppointmentsToStorage(updatedAppts);
+            if (supabaseConnected) {
+              await saveAppointmentToSupabase(newAppt);
+            }
+          }
+        } else if (existingAppt) {
+          // They toggled off scheduling, remove existing appointment
+          const updatedAppts = appointments.filter(app => app.id !== existingAppt.id);
+          setAppointments(updatedAppts);
+          saveAppointmentsToStorage(updatedAppts);
+          if (supabaseConnected) {
+            await deleteAppointmentFromSupabase(existingAppt.id);
+          }
+        }
+
         showToast(`Cadastro de "${clientData.name}" atualizado! ✨`);
       } else {
         targetClient = {
@@ -1380,6 +1428,7 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
                   <div className="pt-1 animate-fade-in">
                     <ClientForm 
                       clientToEdit={clientToEdit}
+                      appointments={appointments}
                       onSubmit={handleSaveClient}
                       onCancel={() => {
                         setIsClientFormOpen(false);
@@ -1423,6 +1472,8 @@ Seja direto. Retorne exclusivamente o JSON sem Markdown fences de bloco de códi
                   appointments={appointments}
                   onAddAppointment={handleAddAppointment}
                   onDeleteAppointment={handleDeleteAppointment}
+                  onUpdateClientPaymentStatus={handleUpdatePaymentStatus}
+                  onUpdateClientProgress={handleUpdateProgress}
                 />
               </div>
             )}

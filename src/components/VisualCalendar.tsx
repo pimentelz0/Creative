@@ -4,20 +4,24 @@
  */
 
 import React, { useState } from 'react';
-import { Client, Appointment, AppointmentStatus } from '../types';
+import { Client, Appointment, AppointmentStatus, PaymentStatus, ProjectProgress } from '../types';
 
 interface VisualCalendarProps {
   clients: Client[];
   appointments: Appointment[];
   onAddAppointment: (appointment: Omit<Appointment, 'id'> & { id?: string }) => void;
   onDeleteAppointment: (id: string) => void;
+  onUpdateClientPaymentStatus: (clientId: string, newStatus: PaymentStatus) => void;
+  onUpdateClientProgress: (clientId: string, newProgress: ProjectProgress) => void;
 }
 
 export function VisualCalendar({
   clients,
   appointments,
   onAddAppointment,
-  onDeleteAppointment
+  onDeleteAppointment,
+  onUpdateClientPaymentStatus,
+  onUpdateClientProgress
 }: VisualCalendarProps) {
   const [currentYear, setCurrentYear] = useState<number>(() => {
     const savedYear = localStorage.getItem('cliboard_calendar_last_year');
@@ -369,9 +373,41 @@ export function VisualCalendar({
                             {app.customTitle || linked?.name || 'Sessão Avulsa'}
                           </h6>
                           {linked && (
-                            <p className="text-[9px] font-semibold text-[#5E537A] dark:text-neutral-400 mt-1">
-                              👤 Cliente: {linked.name}
-                            </p>
+                            <div className="mt-2.5 pt-2 border-t border-fuchsia-100/60 dark:border-neutral-800 space-y-1.5">
+                              <p className="text-[9px] font-black text-[#5E537A] dark:text-neutral-300">
+                                👤 Cliente: {linked.name}
+                              </p>
+                              
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <div className="space-y-0.5">
+                                  <label className="text-[7.5px] font-extrabold text-neutral-400 uppercase tracking-wider block">Status Pagamento</label>
+                                  <select
+                                    value={linked.paymentStatus}
+                                    onChange={(e) => onUpdateClientPaymentStatus(linked.id, e.target.value as PaymentStatus)}
+                                    className="w-full px-1.5 py-1 text-[8.5px] font-black uppercase rounded-lg border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-[#0A080F] text-[#1E1B2E] dark:text-white cursor-pointer outline-none focus:ring-1 focus:ring-purple-350"
+                                  >
+                                    <option value="pago" className="text-emerald-500 font-bold bg-[#0A080F]">Pago 🟢</option>
+                                    <option value="pago_parcial" className="text-amber-500 font-bold bg-[#0A080F]">Parcial 🟡</option>
+                                    <option value="em_aberto" className="text-rose-500 font-bold bg-[#0A080F]">Aberto 🔴</option>
+                                    <option value="fixo_mensal" className="text-blue-500 font-bold bg-[#0A080F]">Recorrente 🔵</option>
+                                  </select>
+                                </div>
+
+                                <div className="space-y-0.5">
+                                  <label className="text-[7.5px] font-extrabold text-neutral-400 uppercase tracking-wider block">Progresso Projeto</label>
+                                  <select
+                                    value={linked.progress}
+                                    onChange={(e) => onUpdateClientProgress(linked.id, e.target.value as ProjectProgress)}
+                                    className="w-full px-1.5 py-1 text-[8.5px] font-black uppercase rounded-lg border border-zinc-200 dark:border-neutral-800 bg-white dark:bg-[#0A080F] text-[#1E1B2E] dark:text-white cursor-pointer outline-none focus:ring-1 focus:ring-purple-350"
+                                  >
+                                    <option value="roteiro" className="text-[#1E1B2E] dark:text-neutral-300 font-bold bg-[#0A080F]">Roteiro 📝</option>
+                                    <option value="gravado" className="text-[#1E1B2E] dark:text-neutral-300 font-bold bg-[#0A080F]">Gravado 🎥</option>
+                                    <option value="editado" className="text-[#1E1B2E] dark:text-neutral-300 font-bold bg-[#0A080F]">Editado 💻</option>
+                                    <option value="entregue" className="text-[#1E1B2E] dark:text-neutral-300 font-bold bg-[#0A080F]">Entregue 🚀</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
                           )}
                           {app.observations && (
                             <p className="text-[9px] text-[#5E537A] dark:text-neutral-500 italic mt-1 leading-relaxed">

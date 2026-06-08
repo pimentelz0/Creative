@@ -190,9 +190,16 @@ export function DashboardStats({
               // Map specific color markers matching the user request
               // Status 1: Orange dot + “Aguardando Aprovação ⏳”
               // Status 2: Pink dot + “Confirmado ⚡”
-              const isConfirmed = app.status === 'ocupado';
-              const dotColor = isConfirmed ? 'bg-pink-500' : 'bg-status-amber bg-amber-500';
-              const statusLabel = isConfirmed ? 'Confirmado ⚡' : 'Aguardando Aprovação ⏳';
+              let dotColor = 'bg-rose-500';
+              let statusLabel = 'Confirmado ⚡';
+
+              if (app.status === 'pendente') {
+                dotColor = 'bg-amber-450 bg-amber-400';
+                statusLabel = 'Pendente ⏳';
+              } else if (app.status === 'livre') {
+                dotColor = 'bg-emerald-500';
+                statusLabel = 'Livre 🌿';
+              }
 
               // Friendly weekday string format
               const [year, month, day] = app.date.split('-');

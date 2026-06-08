@@ -92,27 +92,27 @@ export function ClientList({
 
   const paymentStyleMap: Record<PaymentStatus, { text: string; bg: string; border: string; label: string }> = {
     pago: { 
-      text: 'text-emerald-400', 
-      bg: 'bg-emerald-950/40',
-      border: 'border-emerald-500/20', 
+      text: 'text-white', 
+      bg: 'bg-emerald-600 shadow-[0_0_12px_rgba(16,185,129,0.35)]',
+      border: 'border-emerald-500', 
       label: 'PAGO' 
     },
     em_aberto: { 
-      text: 'text-rose-400', 
-      bg: 'bg-rose-950/40',
-      border: 'border-rose-500/20', 
+      text: 'text-white', 
+      bg: 'bg-rose-600 shadow-[0_0_12px_rgba(244,63,94,0.35)]',
+      border: 'border-rose-500', 
       label: 'ABERTO' 
     },
     pago_parcial: { 
-      text: 'text-amber-400', 
-      bg: 'bg-amber-950/40',
-      border: 'border-amber-500/20', 
+      text: 'text-zinc-950 font-black', 
+      bg: 'bg-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.35)]',
+      border: 'border-amber-500', 
       label: 'PARCIAL' 
     },
     fixo_mensal: { 
-      text: 'text-blue-400', 
-      bg: 'bg-blue-950/40',
-      border: 'border-blue-500/20', 
+      text: 'text-white', 
+      bg: 'bg-blue-600 shadow-[0_0_12px_rgba(59,130,246,0.35)]',
+      border: 'border-blue-500', 
       label: 'RECORRENTE' 
     }
   };
